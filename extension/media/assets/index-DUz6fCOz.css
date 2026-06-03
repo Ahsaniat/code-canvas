@@ -861,8 +861,8 @@ pre.hljs.wrap {
 }
 
 /* Improve visibility when a connected node is hovered/selected (ReactFlow applies .selected on nodes) */
-.react-flow__node:hover ~ .react-flow__edges path,
-.react-flow__node.selected ~ .react-flow__edges path {
+.react-flow__node:hover~.react-flow__edges path,
+.react-flow__node.selected~.react-flow__edges path {
     stroke-linecap: round;
 }
 
@@ -871,6 +871,7 @@ pre.hljs.wrap {
     .react-flow__edge.selected .react-flow__edge-path {
         stroke-width: 7 !important;
     }
+
     .react-flow__node.selected .file-node {
         box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.95) inset, 0 0 28px rgba(167, 139, 250, 0.55);
     }
@@ -882,6 +883,7 @@ pre.hljs.wrap {
         forced-color-adjust: none;
         stroke: Highlight !important;
     }
+
     .react-flow__node.selected .file-node {
         forced-color-adjust: none;
         outline: 3px solid Highlight;
@@ -924,6 +926,160 @@ pre.hljs.wrap {
         outline: 3px solid Highlight;
         outline-offset: 2px;
     }
+}
+
+/* ── Collapse button ── */
+.code-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.code-card-collapse-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--vscode-editorWidget-border, #555);
+  color: var(--vscode-foreground);
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.code-card-collapse-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* ── Description panel ── */
+.description-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+  border-top: 1px solid var(--vscode-editorWidget-border, #333);
+}
+.description-toggle:hover { background: var(--vscode-list-hoverBackground); }
+.description-toggle-arrow { font-size: 9px; }
+.description-body { padding: 6px 8px; }
+.description-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: text;
+  white-space: pre-wrap;
+  color: var(--vscode-foreground);
+}
+.description-placeholder { color: var(--vscode-descriptionForeground); font-style: italic; }
+.description-textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font-size: 12px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 3px;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: var(--vscode-font-family);
+}
+
+/* ── Tag bar ── */
+.tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--vscode-editorWidget-border, #333);
+  min-height: 28px;
+  align-items: center;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  color: #fff;
+  white-space: nowrap;
+}
+.tag-chip-remove {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+}
+.tag-chip-remove:hover { color: #fff; }
+.tag-add-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px dashed var(--vscode-descriptionForeground);
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+.tag-add-btn:hover { border-color: var(--vscode-focusBorder); }
+.tag-input {
+  width: 80px;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-focusBorder);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  outline: none;
+}
+
+/* ── Tag filter toolbar ── */
+.tag-filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.tag-filter-label { font-size: 11px; color: var(--vscode-descriptionForeground); }
+.tag-filter-pill {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-editorWidget-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+.tag-filter-pill--active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+.tag-filter-mode {
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-focusBorder);
+  background: transparent;
+  color: var(--vscode-focusBorder);
+  cursor: pointer;
+}
+.tag-filter-clear {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-errorForeground);
+  background: transparent;
+  color: var(--vscode-errorForeground);
+  cursor: pointer;
 }pre code.hljs {
   display: block;
   overflow-x: auto;

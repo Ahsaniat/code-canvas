@@ -1,9 +1,13 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import ReactFlow, { Background, Controls, MiniMap, Handle, Position, applyNodeChanges } from 'reactflow';
+import ReactFlow, { Background, Controls, MiniMap, Handle, Position, applyNodeChanges, useUpdateNodeInternals } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { nodeTypes, GroupNode } from './reactflow-node-types';
 import CodeCard from './code/CodeCard';
 import { getLayoutedElements } from './layout';
+import { useMetaStore } from './store/metaStore';
+import { DescriptionPanel } from './components/DescriptionPanel';
+import { TagBar } from './components/TagBar';
+import { TagFilterToolbar } from './components/TagFilterToolbar';
 
 // VS Code webview API
 declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string> } }
@@ -176,9 +180,12 @@ export default function App() {
                 })));
                 const paths = selected.map((n: any) => n.path);
                 if (paths.length) startCodeLoadBatch(paths);
+            } else if (msg.type === 'metaLoaded') {
+                useMetaStore.getState().hydrate(msg.payload);
             }
         };
         window.addEventListener('message', listener);
+        vscode?.postMessage({ type: 'requestMeta' });
         return () => window.removeEventListener('message', listener);
     }, []);
 
@@ -631,6 +638,15 @@ export default function App() {
             const content = codeCacheRef.current[n.path] ?? n.path;
             const shouldShowCode = zoomOk;
             if (!codeRefs.current[p.id]) codeRefs.current[p.id] = React.createRef();
+            const { getFileMeta, setCollapsed } = useMetaStore();
+            const meta = getFileMeta(n.path);
+            const collapsed = meta.collapsed ?? false;
+            const updateNodeInternals = useUpdateNodeInternals();
+            
+            useEffect(() => {
+                updateNodeInternals(p.id);
+            }, [collapsed, meta.descriptionExpanded, p.id, updateNodeInternals]);
+
             const handleLines: number[] = (() => {
                 const s = new Set<number>();
                 for (const e of edges as any[]) {
@@ -642,10 +658,26 @@ export default function App() {
             const isHover = hoveredIds.has(p.id) || !!p.selected;
             const placeholderSize = computePlaceholderFontPx(n.label, p.width ?? (measuredSizeRef.current[p.id]?.width ?? (p?.style?.width ?? 480)));
             return (
-                <div className="file-node" style={{ opacity: n.dim ? 0.25 : 1 }}>
-                    <div className="file-node-header label-fixed" onDoubleClick={() => onOpenFile(p)}>{n.label}</div>
+                <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: n.dim ? 0.25 : 1 }}>
+                    <div className="file-node-header label-fixed code-card-header" onDoubleClick={() => onOpenFile(p)}>
+                        <span className="code-card-filename">{n.label}</span>
+                        <button
+                          className="code-card-collapse-btn"
+                          title={collapsed ? 'Expand node' : 'Collapse node'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCollapsed(n.path, !collapsed);
+                          }}
+                        >
+                          {collapsed ? '+' : '−'}
+                        </button>
+                    </div>
+                    
+                    <DescriptionPanel filePath={n.path} />
+                    <TagBar filePath={n.path} />
+
                     {/* in-node hover hint removed; global overlays are used */}
-                    {shouldShowCode ? (
+                    {!collapsed && (shouldShowCode ? (
                         <CodeCard
                             ref={codeRefs.current[p.id]}
                             key={n.path}
@@ -668,7 +700,7 @@ export default function App() {
                             <div className="node-placeholder-title" style={{ fontSize: placeholderSize }}>{n.label}</div>
                             <div style={{ opacity: 0.75 }}>Zoom in to view code</div>
                         </div>
-                    )}
+                    ))}
                     {/* default center handles */}
                     <Handle type="source" position={Position.Right} id={`line-0`} />
                     <Handle type="target" position={Position.Left} id={`line-0`} />
@@ -701,6 +733,24 @@ export default function App() {
         },
     }), [edges, zoomOk, wrap, hoveredIds]);
 
+    const { activeTagFilters, tagFilterMode, files } = useMetaStore();
+
+    // Compute which nodes to dim based on tag filters
+    const dimmedIds = useMemo(() => {
+        if (activeTagFilters.length === 0) return new Set<string>();
+        return new Set(
+            nodes
+                .filter((node: any) => {
+                    const filePath = node.data?.path;
+                    const tags = filePath ? (files[filePath]?.tags ?? []) : [];
+                    if (tagFilterMode === 'OR') return !activeTagFilters.some((t) => tags.includes(t));
+                    if (tagFilterMode === 'AND') return !activeTagFilters.every((t) => tags.includes(t));
+                    return false;
+                })
+                .map((n: any) => n.id)
+        );
+    }, [nodes, activeTagFilters, tagFilterMode, files]);
+
     // Throttle hover overlay updates to animation frame
     const hoverFrameRef = useRef<number | null>(null);
     function scheduleHoverUpdate(nd: any | null) {
@@ -720,6 +770,7 @@ export default function App() {
     return (
         <div className="root">
             <div className="toolbar">
+                <TagFilterToolbar />
                 <button onClick={() => layout()}>Relayout</button>
                 <button onClick={() => vscode?.postMessage({ type: 'loadMore' })}>Load 25 more</button>
                 <button onClick={() => vscode?.postMessage({ type: 'requestChanged' })}>Open Changed (⇧O)</button>
@@ -734,7 +785,15 @@ export default function App() {
             </div>
             <ReactFlow
                 nodes={((): any => {
-                    if (selectedIds.length === 0) return nodes as any;
+                    let baseNodes = nodes as any[];
+                    // Apply tag filtering (dimming)
+                    if (dimmedIds.size > 0) {
+                        baseNodes = baseNodes.map(n => ({
+                            ...n,
+                            data: { ...n.data, dim: n.data.dim || dimmedIds.has(n.id) }
+                        }));
+                    }
+                    if (selectedIds.length === 0) return baseNodes;
                     const selectedSet = new Set(selectedIds);
                     const linked = new Set<string>();
                     for (const e of edges as any[]) {
@@ -743,7 +802,7 @@ export default function App() {
                     }
                     // Always include the selected nodes themselves
                     for (const id of selectedSet) linked.add(id);
-                    return (nodes as any[]).map(n => linked.has(n.id)
+                    return baseNodes.map(n => linked.has(n.id)
                         ? { ...n, className: `${(n as any).className ? (n as any).className + ' ' : ''}node-linked` }
                         : n);
                 })()}

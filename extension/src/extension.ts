@@ -5,11 +5,24 @@ import { htmlForWebview, Graph } from './util';
 import { buildIndex, subgraph } from './graph';
 import { getChangedFiles, watchGitState } from './git';
 import * as lsp from './lsp';
+import { readMeta, updateFileMeta } from './meta';
+import { FileMeta } from './types/meta';
 
 let panel: vscode.WebviewPanel | undefined;
 let idxPromise: ReturnType<typeof buildIndex> | undefined;
 let lastSeeds: string[] = [];
 let lastCap: number = 0;
+
+const updateTimeouts = new Map<string, NodeJS.Timeout>();
+async function debouncedUpdate(root: string, filePath: string, meta: Partial<FileMeta>) {
+    if (updateTimeouts.has(filePath)) {
+        clearTimeout(updateTimeouts.get(filePath)!);
+    }
+    updateTimeouts.set(filePath, setTimeout(async () => {
+        await updateFileMeta(root, filePath, meta);
+        updateTimeouts.delete(filePath);
+    }, 400));
+}
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -94,6 +107,20 @@ function openPanel(context: vscode.ExtensionContext) {
 
     panel.webview.onDidReceiveMessage(async (msg) => {
         switch (msg.type) {
+            case 'requestMeta': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                const meta = await readMeta(root);
+                panel?.webview.postMessage({ type: 'metaLoaded', payload: meta });
+                break;
+            }
+            case 'updateFileMeta': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                await debouncedUpdate(root, msg.filePath, msg.meta);
+                panel?.webview.postMessage({ type: 'metaSaved' });
+                break;
+            }
             case 'requestGraph': await sendInitial(ws); break;
             case 'expand': await sendExpansion(msg.ids || []); break;
             case 'loadMore': {
