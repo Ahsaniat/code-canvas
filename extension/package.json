@@ -5,20 +5,32 @@
     "version": "0.0.1",
     "license": "MIT",
     "engines": {
-        "vscode": "^1.90.0"
+        "vscode": "^1.102.0"
     },
     "categories": [
         "Other"
     ],
     "activationEvents": [
+        "onCommand:codeCanvas.open",
+        "onCommand:codeCanvas.openChanged",
         "onStartupFinished"
     ],
     "main": "dist/extension.js",
     "contributes": {
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "codeCanvas.open",
+                    "group": "navigation",
+                    "when": "resourceScheme == file"
+                }
+            ]
+        },
         "commands": [
             {
                 "command": "codeCanvas.open",
-                "title": "Code Canvas: Open"
+                "title": "Code Canvas: Open",
+                "icon": "$(git-commit)"
             },
             {
                 "command": "codeCanvas.openChanged",
@@ -123,7 +135,7 @@
         "vscode:prepublish": "npm run build",
         "build": "tsup src/extension.ts --format cjs --dts --out-dir dist --external vscode",
         "watch": "tsup src/extension.ts --watch --format cjs --out-dir dist",
-        "package": "vsce package"
+        "package": "vsce package --no-dependencies"
     },
     "dependencies": {
         "fast-glob": "^3.3.2",
