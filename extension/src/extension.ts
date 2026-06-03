@@ -163,6 +163,22 @@ function openPanel(context: vscode.ExtensionContext) {
                 panel?.webview.postMessage({ type: 'codeMany', entries });
                 break;
             }
+            case 'requestMeta': {
+                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!root) break;
+                const meta = await readMeta(root);
+                panel.webview.postMessage({ type: 'metaLoaded', payload: meta });
+                break;
+            }
+
+            case 'updateFileMeta': {
+              const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              if (!root) break;
+              // debouncedUpdate is a debounced wrapper around updateFileMeta
+              await debouncedUpdate(root, message.filePath, message.meta);
+              panel.webview.postMessage({ type: 'metaSaved' });
+              break;
+            }
         }
     });
 }
