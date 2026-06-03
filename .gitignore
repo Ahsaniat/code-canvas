@@ -3,3 +3,4 @@ node_modules
 webview/node_modules
 extension/dist
 package-lock.json
+dist/*
