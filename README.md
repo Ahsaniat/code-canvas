@@ -1,18 +1,18 @@
-# Code Canvas — Visual Code Graph for VS Code
+# Code Canvas - Visual Code Graph for VS Code
 
 ## Overview
 Code Canvas is a Visual Studio Code extension that turns your workspace into an interactive dependency graph. It indexes your JavaScript/TypeScript and Python files, resolves their imports, and renders the result as a canvas of folders and files connected by circuit-style wires.
 
 The canvas is **collapse-first**: folders open as compact chips carrying the aggregate of everything inside them, and you expand only the parts you care about. That is what keeps a ten-thousand-file repository readable — and fast.
 
-- **Folder-level graph** — a collapsed folder shows the union of its descendants' external imports, with in/out degree badges
-- **Expand on demand** — open a folder to reveal its files and subfolders; edges re-anchor to the specific file
-- **Radial layout** — connected nodes on concentric rings, unconnected files in the centre
-- **Circuit-style edges** — orthogonal wires that route *around* nodes, not through them
-- **Symbols on hover** — a wire tells you which functions, classes and types cross that boundary
-- **Automatic descriptions** — every file and folder is described from its doc comment, exports and imports; your own text always wins
-- **Inline code previews** — syntax-highlighted, scrollable, click a token to jump to its definition
-- **Git-aware** — open changed files, live refresh on save
+- **Folder-level graph** - a collapsed folder shows the union of its descendants' external imports, with in/out degree badges
+- **Expand on demand** - open a folder to reveal its files and subfolders; edges re-anchor to the specific file
+- **Radial layout** - connected nodes on concentric rings, unconnected files in the centre
+- **Circuit-style edges** - orthogonal wires that route *around* nodes, not through them
+- **Symbols on hover** - a wire tells you which functions, classes and types cross that boundary
+- **Automatic descriptions** - every file and folder is described from its doc comment, exports and imports; your own text always wins
+- **Inline code previews** - syntax-highlighted, scrollable, click a token to jump to its definition
+- **Git-aware** - open changed files, live refresh on save
 
 ## Status & Disclaimer
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
@@ -24,8 +24,8 @@ This project is provided as-is with many known and unknown bugs. I open-sourced 
 - Git (optional but recommended; used to detect changed files)
 
 This repo uses npm workspaces with two packages:
-- `extension/` — the VS Code extension (TypeScript, bundled with tsup)
-- `webview/` — the webview UI (React, Vite, React Flow, ELK)
+- `extension/` - the VS Code extension (TypeScript, bundled with tsup)
+- `webview/` - the webview UI (React, Vite, React Flow, ELK)
 
 
 ## Install and Build (from source)
@@ -218,7 +218,7 @@ Tip: For a webview build watch, run `npx vite build --watch` inside `webview/`.
 
 
 ## License
-MIT — free to use, modify, and distribute. See the `LICENSE` file for details.
+MIT - free to use, modify, and distribute. See the `LICENSE` file for details.
 
 
 ## Acknowledgements
@@ -226,3 +226,7 @@ MIT — free to use, modify, and distribute. See the `LICENSE` file for details.
 - ELK (Eclipse Layout Kernel) for layered layouts
 - Highlight.js for syntax highlighting
 - VS Code extension samples and APIs
+
+
+## Note
+First of all I give thanks to the original author waLLxAck. I have forked his source code for this extension and added support for VScode later versions. I have also optimized and added new features, while improving usability of the extension. You might see build files here. I have git committed them intentionally as a fallback. I have tested it on vscode 1.129.1. Version lesser than this might not work with this extension. Even though the extension is under development and more features will be coming next month. This is the stable release. You are welcome to try it
