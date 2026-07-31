@@ -4,3 +4,4 @@ webview/node_modules
 extension/dist
 package-lock.json
 extension/code-canvas-0.0.1.vsix
+.worktrees/
