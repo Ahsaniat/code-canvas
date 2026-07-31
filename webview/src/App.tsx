@@ -1,49 +1,169 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
-import ReactFlow, { Background, Controls, MiniMap, Handle, Position, applyNodeChanges, useUpdateNodeInternals } from 'reactflow';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactFlow, { Background, Controls, MarkerType, MiniMap, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { nodeTypes, GroupNode } from './reactflow-node-types';
-import CodeCard from './code/CodeCard';
-import { getLayoutedElements } from './layout';
+import { nodeTypes, CanvasContext, CanvasContextValue, FolderNodeData } from './nodeTypes';
+import { edgeTypes } from './edges/CircuitEdge';
+import { getLayoutedElements, LayoutAlgo, normalizeAlgo } from './layout';
+import { hashRects, routeEdges, ROUTE_CHUNK_SIZE, type Rect } from './edges/route';
+import {
+    buildModel, projectGraph, initialExpansion, expandWithAncestors, collapseWithDescendants,
+    type GraphModel, type ProjectedEdge, type ProjectedNode, type RawEdge, type RawNode,
+} from './model/graphModel';
 import { useMetaStore } from './store/metaStore';
-import { DescriptionPanel } from './components/DescriptionPanel';
-import { TagBar } from './components/TagBar';
 import { TagFilterToolbar } from './components/TagFilterToolbar';
+import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
 
 // VS Code webview API
-declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string> } }
-const vscode = window.acquireVsCodeApi?.();
+declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string>; vscode?: any; } }
+const vscode = window.vscode || (window.vscode = window.acquireVsCodeApi?.());
 
-type Node = { id: string; type?: 'file' | 'group'; position: { x: number; y: number }; data: any; style?: any; dragHandle?: string; parentNode?: string; width?: number; height?: number; extent?: any };
+type Node = { id: string; type?: 'file' | 'folder' | 'group'; position: { x: number; y: number }; data: any; style?: any; dragHandle?: string; parentId?: string; width?: number; height?: number; extent?: any; zIndex?: number; className?: string };
+
+// A collapsed folder is a fixed-size chip: deterministic geometry means the
+// layout can space siblings using the exact size that will be painted.
+const FOLDER_W = 320;
+const FOLDER_H = 168;
+const GROUP_SEED_W = 320;
+const GROUP_SEED_H = 200;
+
+// React Flow v11 REQUIRES every parent node to appear BEFORE its children in the
+// nodes array, otherwise children detach / mis-position (P0-1). Sort by hierarchy
+// depth (ascending) with a stable tiebreak so a parent always precedes its
+// descendants regardless of the order we assembled the array in.
+function orderNodesParentsFirst<T extends { id: string; parentId?: string }>(list: T[]): T[] {
+    const byId = new Map(list.map(n => [n.id, n]));
+    const depth = new Map<string, number>();
+    const depthOf = (n: T, guard = 0): number => {
+        const cached = depth.get(n.id);
+        if (cached != null) return cached;
+        if (guard > 10000) return 0;
+        const parent = n.parentId ? byId.get(n.parentId) : undefined;
+        const d = parent ? depthOf(parent, guard + 1) + 1 : 0;
+        depth.set(n.id, d);
+        return d;
+    };
+    return list
+        .map((n, i) => ({ n, i, d: depthOf(n) }))
+        .sort((a, b) => (a.d - b.d) || (a.i - b.i))
+        .map(x => x.n);
+}
+
+// Convert a VS Code URI string (e.g. file:///home/foo.ts) to a filesystem path.
+function uriToPath(uri: string): string {
+    try {
+        if (uri.startsWith('file://')) {
+            let p = decodeURIComponent(uri.replace(/^file:\/\//, ''));
+            if (/^\/[a-zA-Z]:/.test(p)) p = p.slice(1); // Windows: /c:/... -> c:/...
+            return p;
+        }
+        return decodeURIComponent(uri);
+    } catch {
+        return uri;
+    }
+}
+
+/**
+ * Deterministic file-node geometry from its content.
+ *
+ * This is the ONLY size source for a file node. The previous build measured the
+ * rendered code block and wrote the result back into the node's style, which
+ * changed node sizes AFTER the layout had already spaced them — the same class
+ * of bug as the container resize. Sizes are now a pure function of content, so
+ * a layout pass is reproducible and never invalidates itself.
+ */
+function computeStyleFromContent(content: string) {
+    const text = content || '';
+    const lines = text.split('\n');
+    const maxLen = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const rawWidth = Math.max(480, Math.floor(maxLen * 7 + 40));
+    const rawHeight = Math.max(200, lines.length * 14 + 30);
+    return { width: Math.min(rawWidth, 1400), height: Math.min(rawHeight, 900) } as const;
+}
+
+/**
+ * Absolute (canvas-space) rectangles for edge routing.
+ *
+ * React Flow child positions are relative to the parent, so offsets accumulate
+ * down the tree. Containers are returned in `rectById` (edges may terminate on
+ * one) but are excluded from `obstacles` — a container must be enterable, or no
+ * route into an expanded folder could exist.
+ */
+function absoluteRects(nodes: Node[]): { rectById: Map<string, Rect>; obstacles: Rect[] } {
+    const rectById = new Map<string, Rect>();
+    const obstacles: Rect[] = [];
+    for (const n of nodes) {
+        const parent = n.parentId ? rectById.get(n.parentId) : undefined;
+        const w = n.style?.width ?? (n.type === 'group' ? GROUP_SEED_W : FOLDER_W);
+        const h = n.style?.height ?? (n.type === 'group' ? GROUP_SEED_H : FOLDER_H);
+        const rect: Rect = {
+            id: n.id,
+            x: (parent?.x ?? 0) + (n.position?.x ?? 0),
+            y: (parent?.y ?? 0) + (n.position?.y ?? 0),
+            w, h,
+        };
+        rectById.set(n.id, rect);
+        if (n.type !== 'group') obstacles.push(rect);
+    }
+    return { rectById, obstacles };
+}
+
+/**
+ * Union two raw graphs by id, keeping the incoming definition on a collision.
+ * Ordering does not matter here: `buildModel` derives the hierarchy from
+ * `parentId`, and the parents-first requirement is enforced on the projection.
+ */
+function mergeGraphs(
+    current: { nodes: RawNode[]; edges: RawEdge[] },
+    incoming: { nodes?: RawNode[]; edges?: RawEdge[] } | undefined,
+): { nodes: RawNode[]; edges: RawEdge[] } {
+    if (!incoming?.nodes?.length && !incoming?.edges?.length) return current;
+    const nodes = new Map(current.nodes.map(n => [n.id, n] as const));
+    for (const n of incoming.nodes ?? []) nodes.set(n.id, n);
+    const edges = new Map(current.edges.map(e => [e.id, e] as const));
+    for (const e of incoming.edges ?? []) edges.set(e.id, e);
+    return { nodes: Array.from(nodes.values()), edges: Array.from(edges.values()) };
+}
+
+type PersistedState = { expanded?: string[]; algo?: string; hidden?: string[] };
 
 export default function App() {
-    const [graph, setGraph] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+    const persisted: PersistedState = (() => {
+        try { return (vscode?.getState?.() as PersistedState) ?? {}; } catch { return {}; }
+    })();
+
+    const [graph, setGraph] = useState<{ nodes: RawNode[]; edges: RawEdge[] }>({ nodes: [], edges: [] });
     const [nodes, setNodes] = useState<Node[]>([]);
     const [edges, setEdges] = useState<any[]>([]);
     const nodesRef = useRef<Node[]>([]);
     const edgesRef = useRef<any[]>([]);
-    const [rawEdges, setRawEdges] = useState<any[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [emptyMsg, setEmptyMsg] = useState<string | undefined>(undefined);
     const [progress, setProgress] = useState<string | undefined>(undefined);
-    const lastAlgo = useRef<'horizontal'>('horizontal');
+
+    // Collapse-first view state: the canvas renders only what is expanded, which
+    // is what removes the nested-container bugs and most of the render cost.
+    // The OPENING depth is chosen per graph by `initialExpansion` — see the note
+    // there on why "collapse everything" is the one default that cannot work.
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set(persisted.expanded ?? []));
+    const hadPersistedExpansionRef = useRef((persisted.expanded ?? []).length > 0);
+    const autoExpandedRef = useRef(false);
+    const [hidden, setHidden] = useState<Set<string>>(() => new Set(persisted.hidden ?? []));
+
+    const [algo, setAlgo] = useState<LayoutAlgo>(() => normalizeAlgo(persisted.algo));
+    const algoRef = useRef<LayoutAlgo>(algo);
+    useEffect(() => { algoRef.current = algo; }, [algo]);
+
     const [showRefs, setShowRefs] = useState(true);
+    const [refResults, setRefResults] = useState<{ at: { path: string; line: number; character: number }; refs: { uri: string; range: { start: { line: number; character: number } } }[] } | null>(null);
+    const wheelCleanupRef = useRef<(() => void) | null>(null);
     const [wrap, setWrap] = useState(false);
     const [showEdges, setShowEdges] = useState(true);
     const [focusIds, setFocusIds] = useState<Set<string> | null>(null);
     const rfInstanceRef = useRef<any | null>(null);
-    const hasFitOnceRef = useRef<boolean>(false);
     const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
     const [zoomOk, setZoomOk] = useState<boolean>(true);
     const codeCacheRef = useRef<Record<string, string>>({});
-    const measuredSizeRef = useRef<Record<string, { width: number; height: number }>>({});
-    const pendingMeasureRef = useRef<Record<string, { width: number; height: number }>>({});
-    const rafCommitRef = useRef<number | null>(null);
-    const headerHeight = 30; // matches CSS: .code-card { height: calc(100% - 30px); }
-    const prePaddingTop = 8; // matches CSS: pre.hljs { padding: 8px 10px; }
-    const lineHeight = 16; // approx from font-size 12px and line-height 1.35
-    const linePosRef = useRef<Record<string, { line: number; top: number }[]>>({});
-    const highlightRef = useRef<Record<string, number | undefined>>({});
-    const scrollRef = useRef<Record<string, number | undefined>>({});
+    const overlayRef = useRef<HoverOverlayHandle | null>(null);
     const zoomSmoothTimerRef = useRef<number | null>(null);
     const moveSamplesRef = useRef<Array<{ t: number; x: number; y: number }>>([]);
     const isFlingingRef = useRef<boolean>(false);
@@ -56,9 +176,40 @@ export default function App() {
     const gestureZoomedRef = useRef<boolean>(false);
     const gesturePannedRef = useRef<boolean>(false);
     const wheelCooldownUntilRef = useRef<number>(0);
+    const isDraggingViewRef = useRef<boolean>(false);
+    const moveFrameRef = useRef<number | null>(null);
+    const pendingVpRef = useRef<any | null>(null);
 
     const WHEEL_COOLDOWN_MS = 450;   // ~ matches your 420ms smooth class removal
     const ZOOM_EPS = 1e-4;           // minimal zoom delta treated as "zoom happened"
+
+    // -----------------------------------------------------------------------
+    // Model + projection
+    // -----------------------------------------------------------------------
+
+    const model: GraphModel = useMemo(() => buildModel(graph.nodes, graph.edges), [graph]);
+    const modelRef = useRef<GraphModel>(model);
+    useEffect(() => { modelRef.current = model; }, [model]);
+
+    // Seed the opening view once, the first time a non-empty graph arrives, and
+    // only when the user has no saved expansion of their own to restore.
+    useEffect(() => {
+        if (autoExpandedRef.current || !model.nodes.size) return;
+        autoExpandedRef.current = true;
+        if (hadPersistedExpansionRef.current) return;
+        const seed = initialExpansion(model);
+        if (seed.size) setExpanded(seed);
+    }, [model]);
+
+    const projection = useMemo(() => projectGraph(model, expanded, hidden), [model, expanded, hidden]);
+
+    useEffect(() => {
+        try { vscode?.setState?.({ expanded: Array.from(expanded), hidden: Array.from(hidden), algo }); } catch { }
+    }, [expanded, hidden, algo]);
+
+    // -----------------------------------------------------------------------
+    // Viewport kinetics (unchanged behaviour)
+    // -----------------------------------------------------------------------
 
     function cancelFling(): void {
         if (flingRafRef.current != null) {
@@ -67,8 +218,6 @@ export default function App() {
         }
         isFlingingRef.current = false;
     }
-
-
 
     function startFling(initialVx: number, initialVy: number): void {
         cancelFling();
@@ -87,7 +236,6 @@ export default function App() {
             const decay = Math.exp(-damping * dt);
             const prevVx = v.vx; const prevVy = v.vy;
             v.vx *= decay; v.vy *= decay;
-            // Stop an axis if it crosses zero or is very small
             if (Math.sign(prevVx) !== 0 && Math.sign(prevVx) !== Math.sign(v.vx)) v.vx = 0;
             if (Math.abs(v.vx) < axisStopMin) v.vx = 0;
             if (Math.sign(prevVy) !== 0 && Math.sign(prevVy) !== Math.sign(v.vy)) v.vy = 0;
@@ -96,7 +244,6 @@ export default function App() {
             const vp = viewportRef.current;
             let nextX = vp.x + v.vx * dt;
             let nextY = vp.y + v.vy * dt;
-            // Snap to integer pixels near stop to reduce subpixel shimmer
             if (speed < 80) { nextX = Math.round(nextX); nextY = Math.round(nextY); }
             try { rfInstanceRef.current?.setViewport?.({ x: nextX, y: nextY, zoom: vp.zoom }); } catch { }
             viewportRef.current = { x: nextX, y: nextY, zoom: vp.zoom };
@@ -106,32 +253,9 @@ export default function App() {
         flingRafRef.current = requestAnimationFrame(step);
     }
 
-    function enqueueSizeUpdate(nodeId: string, size: { width: number; height: number }) {
-        // Avoid style writes while viewport is animated to prevent flicker
-        if (isFlingingRef.current || isDraggingViewRef.current) return;
-        pendingMeasureRef.current[nodeId] = size;
-        if (rafCommitRef.current == null) {
-            rafCommitRef.current = window.requestAnimationFrame(() => {
-                const updates = pendingMeasureRef.current;
-                pendingMeasureRef.current = {};
-                rafCommitRef.current = null;
-                setNodes(prev => prev.map((x: any) => updates[x.id] ? { ...x, style: updates[x.id] } : x));
-            });
-        }
-    }
-
-    function computeStyleFromContent(content: string) {
-        // fallback rough estimate before exact measure arrives
-        const text = content || '';
-        const lines = text.split('\n');
-        const maxLen = lines.reduce((m, l) => Math.max(m, l.length), 0);
-        const rawWidth = Math.max(480, Math.floor(maxLen * 7 + 40));
-        const rawHeight = Math.max(200, lines.length * 14 + 30);
-        // clamp to avoid enormous nodes that can destabilize layout/rendering
-        const width = Math.min(rawWidth, 1400);
-        const height = Math.min(rawHeight, 900);
-        return { width, height } as const;
-    }
+    // -----------------------------------------------------------------------
+    // Host messages
+    // -----------------------------------------------------------------------
 
     useEffect(() => {
         vscode?.postMessage({ type: 'requestGraph' });
@@ -142,600 +266,496 @@ export default function App() {
                 ? 'Open a folder to analyze your code.' : 'No JS/TS/Python files found.');
             else if (msg.type === 'progress') setProgress(msg.msg || undefined);
             else if (msg.type === 'graph') {
-                setEmptyMsg(undefined); setProgress(undefined); setGraph(msg.graph);
-                const paths = (msg.graph?.nodes || []).filter((n: any) => n.type === 'file' && n.path).map((n: any) => n.path);
-                if (paths.length) startCodeLoadBatch(paths);
-                setRawEdges(msg.graph?.edges || []);
+                setEmptyMsg(undefined);
+                setProgress(undefined);
+                setGraph({ nodes: msg.graph?.nodes ?? [], edges: msg.graph?.edges ?? [] });
             }
-            else if (msg.type === 'expandResult') mergeGraph(msg.graph);
-            else if (msg.type === 'changedFiles') {
-                openFiles(msg.files);
-            } else if (msg.type === 'openChanged') {
-                openFiles(msg.files);
-            } else if (msg.type === 'layout') {
-                layout();
-            } else if (msg.type === 'toggleRefs') {
-                setShowRefs(s => !s);
-            } else if (msg.type === 'toggleEdges') {
-                setShowEdges(s => !s);
-            } else if (msg.type === 'code') {
+            else if (msg.type === 'expandResult') {
+                // Expanding a file pulls MORE of the import graph in; it must add
+                // to what is already on the canvas rather than replace it.
+                setEmptyMsg(undefined);
+                setProgress(undefined);
+                setGraph(prev => mergeGraphs(prev, msg.graph));
+            }
+            else if (msg.type === 'changedFiles' || msg.type === 'openChanged') revealFiles(msg.files);
+            else if (msg.type === 'gitChanged') revealFiles(msg.files || []);
+            else if (msg.type === 'layout') {
+                const next = normalizeAlgo(msg.algo);
+                setAlgo(next);
+                algoRef.current = next;
+                void runLayout(next);
+            } else if (msg.type === 'toggleRefs') setShowRefs(s => !s);
+            else if (msg.type === 'toggleEdges') setShowEdges(s => !s);
+            else if (msg.type === 'code') {
                 codeCacheRef.current[msg.path] = msg.content || '';
-                setNodes(prev => prev.map(n => (n.type === 'file' && n.data.path === msg.path) ? { ...n, style: computeStyleFromContent(codeCacheRef.current[msg.path]) } : n));
                 onCodeArrived([msg.path]);
             } else if (msg.type === 'codeMany') {
-                const updated = new Set<string>();
+                const updated: string[] = [];
                 for (const { path, content } of (msg.entries || [])) {
                     codeCacheRef.current[path] = content || '';
-                    updated.add(path);
+                    updated.push(path);
                 }
-                if (updated.size) setNodes(prev => prev.map(n => (n.type === 'file' && updated.has(n.data.path)) ? { ...n, style: computeStyleFromContent(codeCacheRef.current[n.data.path]) } : n));
-                onCodeArrived(Array.from(updated));
-            } else if (msg.type === 'seedFolder') {
-                // The extension relays the path; filter current index graph by prefix and request code for those
-                const folder: string = msg.folder;
-                const selected = (graph.nodes || []).filter((n: any) => n.type === 'file' && (n.path || '').startsWith(folder));
-                setNodes(prev => selected.map((n: any, i: number) => ({
-                    id: n.id, type: n.type, position: { x: (i % 3) * 1200, y: Math.floor(i / 3) * 1000 },
-                    parentNode: n.parentNode, style: computeStyleFromContent(codeCacheRef.current[n.path] || ''), dragHandle: '.file-node-header, .node-placeholder-body', data: { label: n.label, preview: (<div className="preview">{n.path}</div>), path: n.path, lang: n.lang }
-                })));
-                const paths = selected.map((n: any) => n.path);
-                if (paths.length) startCodeLoadBatch(paths);
+                onCodeArrived(updated);
+            } else if (msg.type === 'docChanged') {
+                if (msg.file) refreshCode([msg.file]);
+            } else if (msg.type === 'refs') {
+                setRefResults({ at: msg.at, refs: msg.refs || [] });
             } else if (msg.type === 'metaLoaded') {
                 useMetaStore.getState().hydrate(msg.payload);
+            } else if (msg.type === 'autoDescriptions') {
+                useMetaStore.getState().applyAutoDescriptions(msg.entries || {});
             }
         };
         window.addEventListener('message', listener);
         vscode?.postMessage({ type: 'requestMeta' });
         return () => window.removeEventListener('message', listener);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => { // build ReactFlow nodes
-        const newNodes: Node[] = (graph.nodes || []).map((n: any) => ({
+    // P1-8: remove the wheel listener registered in onInit when the app unmounts.
+    useEffect(() => () => {
+        wheelCleanupRef.current?.();
+        wheelCleanupRef.current = null;
+        refineTokenRef.current++;
+        cancelRefinement();
+        cancelFling();
+        if (layoutTimerRef.current != null) window.clearTimeout(layoutTimerRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // -----------------------------------------------------------------------
+    // Projection -> React Flow
+    // -----------------------------------------------------------------------
+
+    const sizeOfProjected = useCallback((n: ProjectedNode) => {
+        if (n.kind === 'file') return computeStyleFromContent(codeCacheRef.current[n.path ?? ''] || '');
+        if (n.kind === 'folder') return { width: FOLDER_W, height: FOLDER_H };
+        return { width: GROUP_SEED_W, height: GROUP_SEED_H };
+    }, []);
+
+    const toRfNode = useCallback((n: ProjectedNode, previous?: Node): Node => {
+        const size = sizeOfProjected(n);
+        const folderData: FolderNodeData = {
+            label: n.label,
+            path: n.path,
+            fileCount: n.fileCount,
+            inDegree: n.inDegree,
+            outDegree: n.outDegree,
+            expandable: n.expandable,
+            expanded: n.kind === 'group',
+        };
+        return {
             id: n.id,
-            type: n.type,
-            position: { x: 0, y: 0 },
-            parentNode: n.parentNode,
-            extent: n.type === 'file' && n.parentNode ? 'parent' : undefined,
-            dragHandle: n.type === 'file' ? '.file-node-header, .node-placeholder-body' : undefined,
-            data: n.type === 'file'
-                ? { label: n.label, preview: (<div className="preview">{n.path}</div>), path: n.path, lang: n.lang }
-                : { label: n.label },
-            style: n.type === 'group' ? { width: 300, height: 200 } : computeStyleFromContent(codeCacheRef.current[n.path] || ''),
-            // Ensure files render above their groups for interaction & visibility
-            zIndex: n.type === 'group' ? 0 : 1,
-        }));
-        const newEdges = (graph.edges || []).map((e: any) => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            data: { sourceLine: e.sourceLine, targetLine: e.targetLine },
-            sourceHandle: (e.sourceLine ?? null) !== null && (e.sourceLine ?? undefined) !== undefined ? `line-${e.sourceLine}` : undefined,
-            targetHandle: (e.targetLine ?? null) !== null && (e.targetLine ?? undefined) !== undefined ? `line-${e.targetLine}` : undefined
-        }));
-        setNodes(newNodes);
-        setEdges(newEdges);
-        setRawEdges(newEdges);
-        if (newNodes.length > 0) {
-            setTimeout(() => layout(), 50);
-        }
-        hasFitOnceRef.current = false;
-    }, [graph]);
+            type: n.kind,
+            // Reuse the previous position so a collapse/expand does not visually
+            // teleport everything before the new layout lands.
+            position: previous?.position ?? { x: 0, y: 0 },
+            parentId: n.parentId,
+            extent: n.parentId ? 'parent' : undefined,
+            dragHandle: n.kind === 'file' ? '.file-node-header, .node-placeholder-body' : undefined,
+            data: n.kind === 'file'
+                ? { label: n.label, path: n.path, lang: n.lang, width: size.width }
+                : folderData,
+            style: size,
+            zIndex: n.kind === 'group' ? 0 : 1,
+        };
+    }, [sizeOfProjected]);
+
+    const toRfEdge = useCallback((e: ProjectedEdge) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'circuit',
+        data: {
+            relationships: e.relationships,
+            aggregated: !e.direct || e.relationships.length > 1,
+            sourceLine: e.sourceLine,
+            targetLine: e.targetLine,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: 'rgba(255,255,255,0.85)' },
+        style: { stroke: 'rgba(255,255,255,0.55)', strokeWidth: 1.2 },
+    }), []);
+
+    useEffect(() => {
+        const previousById = new Map(nodesRef.current.map(n => [n.id, n] as const));
+        const rfNodes = orderNodesParentsFirst(projection.nodes.map(n => toRfNode(n, previousById.get(n.id))));
+        const rfEdges = projection.edges.map(toRfEdge);
+        nodesRef.current = rfNodes;
+        edgesRef.current = rfEdges;
+        setNodes(rfNodes);
+        setEdges(rfEdges);
+        requestCode(projection.visibleFilePaths);
+        if (rfNodes.length) scheduleLayout(60);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [projection, toRfNode, toRfEdge]);
 
     useEffect(() => { nodesRef.current = nodes; }, [nodes]);
     useEffect(() => { edgesRef.current = edges; }, [edges]);
 
-    function mergeGraph(g: any) {
-        const newPaths: string[] = [];
-        setNodes(prev => {
-            const map = new Map(prev.map(n => [n.id, n]));
-            for (const n of g.nodes) if (!map.has(n.id)) {
-                if (n.type === 'file' && n.path) newPaths.push(n.path);
-                map.set(n.id, {
-                    id: n.id,
-                    type: n.type,
-                    position: { x: Math.random() * 800, y: Math.random() * 600 },
-                    parentNode: n.parentNode,
-                    extent: n.type === 'file' && n.parentNode ? 'parent' : undefined,
-                    style: n.type === 'group' ? { width: 300, height: 200 } : computeStyleFromContent(codeCacheRef.current[n.path] || ''),
-                    dragHandle: n.type === 'file' ? '.file-node-header, .node-placeholder-body' : undefined,
-                    data: n.type === 'file'
-                        ? { label: n.label, preview: <div className="preview">{n.path}</div>, path: n.path, lang: n.lang }
-                        : { label: n.label },
-                    zIndex: n.type === 'group' ? 0 : 1,
-                } as any);
-            }
-            return Array.from(map.values());
-        });
-        setEdges(prev => {
-            const ids = new Set(prev.map(e => e.id));
-            const add = g.edges.filter((e: any) => !ids.has(e.id));
-            return [...prev, ...add];
-        });
-        if (newPaths.length) requestMoreCode(newPaths);
-    }
+    // -----------------------------------------------------------------------
+    // Code fetching — only for files actually on the canvas
+    // -----------------------------------------------------------------------
 
-    function openFiles(paths: string[]) {
-        setNodes(prev => {
-            const ids = new Set(prev.map(p => p.id));
-            const add: Node[] = graph.nodes
-                .filter((n: any) => n.type === 'file' && paths.includes(n.path) && !ids.has(n.id))
-                .map((n: any, i: number) => ({
-                    id: n.id,
-                    type: n.type,
-                    position: { x: 50 + i * 30, y: 60 + i * 30 },
-                    parentNode: n.parentNode,
-                    extent: n.parentNode ? 'parent' : undefined,
-                    style: { width: 480, height: 280 },
-                    dragHandle: '.file-node-header, .node-placeholder-body',
-                    data: { label: n.label, preview: <div className="preview">{n.path}</div>, path: n.path, lang: n.lang },
-                    zIndex: 1,
-                }));
-            return [...prev, ...add];
-        });
-        if (paths && paths.length) requestMoreCode(paths);
-    }
-
-    // Debounced auto-layout to avoid thrashing
-    const autoLayoutTimer = useRef<number | null>(null);
-    function scheduleAutoLayout() {
-        if (autoLayoutTimer.current) {
-            window.clearTimeout(autoLayoutTimer.current);
-        }
-        autoLayoutTimer.current = window.setTimeout(() => { layout(); }, 250);
-    }
-
-    // Track pending code loads and run one layout after all code in a batch has loaded
     const pendingCodePathsRef = useRef<Set<string>>(new Set());
-    const afterFullLoadLayoutTimer = useRef<number | null>(null);
-    const moveFrameRef = useRef<number | null>(null);
-    const pendingVpRef = useRef<any | null>(null);
-    const isDraggingViewRef = useRef<boolean>(false);
 
-    function maybeRunLayoutAfterFullLoad() {
-        if (pendingCodePathsRef.current.size !== 0) return;
-        if (afterFullLoadLayoutTimer.current != null) {
-            window.clearTimeout(afterFullLoadLayoutTimer.current);
-        }
-        // Give the DOM a moment so CodeCard measurements propagate before layout
-        afterFullLoadLayoutTimer.current = window.setTimeout(() => {
-            layout();
-            afterFullLoadLayoutTimer.current = null;
-        }, 120);
+    function requestCode(paths: string[]) {
+        const toRequest = (paths || []).filter(p => p && codeCacheRef.current[p] === undefined && !pendingCodePathsRef.current.has(p));
+        if (!toRequest.length) return;
+        toRequest.forEach(p => pendingCodePathsRef.current.add(p));
+        vscode?.postMessage({ type: 'requestCodeMany', paths: toRequest });
     }
 
-    function startCodeLoadBatch(paths: string[]) {
-        const toRequest = (paths || []).filter(p => !codeCacheRef.current[p]);
-        pendingCodePathsRef.current = new Set(toRequest);
-        if (toRequest.length) {
-            vscode?.postMessage({ type: 'requestCodeMany', paths: toRequest });
-        } else {
-            maybeRunLayoutAfterFullLoad();
-        }
-    }
-
-    function requestMoreCode(paths: string[]) {
-        const toRequest = (paths || []).filter(p => !codeCacheRef.current[p]);
-        if (toRequest.length) {
-            toRequest.forEach(p => pendingCodePathsRef.current.add(p));
-            vscode?.postMessage({ type: 'requestCodeMany', paths: toRequest });
-        }
+    function refreshCode(paths: string[]) {
+        const present = new Set(nodesRef.current.filter(n => n.type === 'file').map(n => (n.data as any)?.path));
+        const toRequest = (paths || []).filter(p => present.has(p));
+        if (toRequest.length) vscode?.postMessage({ type: 'requestCodeMany', paths: toRequest });
     }
 
     function onCodeArrived(paths: string[]) {
         let any = false;
-        for (const p of paths) {
-            if (pendingCodePathsRef.current.delete(p)) any = true;
+        for (const p of paths) if (pendingCodePathsRef.current.delete(p)) any = true;
+        // File node sizes are derived from content, so a batch of arrivals means
+        // the geometry changed: relayout once, debounced, never per file.
+        if (any && pendingCodePathsRef.current.size === 0) {
+            nodesRef.current = nodesRef.current.map(n => n.type === 'file'
+                ? { ...n, style: computeStyleFromContent(codeCacheRef.current[(n.data as any).path] || '') }
+                : n);
+            setNodes(nodesRef.current);
+            scheduleLayout(120);
         }
-        if (any) maybeRunLayoutAfterFullLoad();
     }
 
-    const layout = async () => {
-        const nodesToLayout = nodesRef.current.map(n => ({
-            ...n,
-            width: n.style?.width || measuredSizeRef.current[n.id]?.width || 480,
-            height: n.style?.height || measuredSizeRef.current[n.id]?.height || 280,
-            // React Flow expects children to be inside parent bounds, pass through parentNode for layout
-            parentNode: (n as any).parentNode,
-            type: (n as any).type,
-        }));
-        if (nodesToLayout.length === 0) return;
+    // -----------------------------------------------------------------------
+    // Layout + routing
+    // -----------------------------------------------------------------------
+
+    const layoutTimerRef = useRef<number | null>(null);
+    const layoutTokenRef = useRef(0);
+
+    function scheduleLayout(delayMs = 150) {
+        if (layoutTimerRef.current != null) window.clearTimeout(layoutTimerRef.current);
+        layoutTimerRef.current = window.setTimeout(() => {
+            layoutTimerRef.current = null;
+            void runLayout();
+        }, delayMs);
+    }
+
+    // Progressive routing. The synchronous slice is time-boxed so a big graph can
+    // never stall a frame; whatever it had to skip is finished during idle time.
+    const refineHandleRef = useRef<number | null>(null);
+    const refineTokenRef = useRef(0);
+    const MAX_REFINE_CHUNKS = 12;
+    const REFINE_BUDGET_MS = 30;
+
+    function cancelRefinement() {
+        if (refineHandleRef.current == null) return;
+        const cancel = (window as any).cancelIdleCallback ?? window.clearTimeout;
+        try { cancel(refineHandleRef.current); } catch { }
+        refineHandleRef.current = null;
+    }
+
+    function scheduleIdle(fn: () => void) {
+        const request = (window as any).requestIdleCallback;
+        refineHandleRef.current = request
+            ? request(fn, { timeout: 400 })
+            : window.setTimeout(fn, 32);
+    }
+
+    /**
+     * Bake freshly computed circuit routes into the edge array.
+     *
+     * Never called from a render body — only after a layout settles or a node
+     * drag ends, so routing cost is per-interaction, not per-frame.
+     */
+    function applyRoutes(nodeList: Node[], edgeList: any[]): any[] {
+        cancelRefinement();
+        if (!edgeList.length) return edgeList;
         try {
-            const layoutedNodes = await getLayoutedElements(nodesToLayout, edgesRef.current);
-            setNodes(layoutedNodes as any);
-        } catch (error) {
-            // Fallback to simple horizontal layout if ELK fails
-            console.warn('ELK layout failed, using fallback:', error);
-            let currentX = 40;
-            const y = 60;
-            const spacing = 20;
-            const fallbackNodes = nodesToLayout.map(n => {
-                const width = n.width || 480;
-                const pos = { x: currentX, y };
-                currentX += width + spacing;
-                return { ...n, position: pos };
-            });
-            setNodes(fallbackNodes);
-        }
-    };
+            const { rectById, obstacles } = absoluteRects(nodeList);
+            const geometryHash = hashRects(obstacles);
+            const inputs = edgeList.map(e => ({ id: e.id, source: e.source, target: e.target }));
+            const { paths, degraded } = routeEdges(inputs, rectById, obstacles, geometryHash);
+            const merged = mergeRoutes(edgeList, paths);
 
-    function onOpenFile(n: Node) { vscode?.postMessage({ type: 'openFile', path: n.data.path }); }
-
-    function onTokenClick({ path, line, character, token }: any) {
-        if (!showRefs) return;
-        vscode?.postMessage({ type: 'requestRefs', path, line, character, token });
-        vscode?.postMessage({ type: 'requestDefOpen', path, line, character });
-        // Focus connected nodes to the clicked file
-        const base = nodes.find(n => n.data.path === path);
-        if (base) focusNodesForId(base.id);
-    }
-
-    function expandSelection() {
-        const ids = selectedIds.length ? selectedIds : (nodes as any).filter((n: any) => n.selected).map((n: any) => n.id);
-        if (ids.length) vscode?.postMessage({ type: 'expand', ids });
-    }
-
-    function focusNodesForId(baseId: string) {
-        const neighborIds = new Set<string>([baseId]);
-        for (const e of edges as any[]) {
-            if (e.source === baseId) neighborIds.add(e.target);
-            if (e.target === baseId) neighborIds.add(e.source);
-        }
-        // Build vertical positions for focus lane
-        const order: string[] = [baseId, ...Array.from(neighborIds).filter(id => id !== baseId).sort()];
-        let currentY = 60;
-        const x = 40;
-        const spacing = 20;
-        const nextPos = new Map<string, { x: number; y: number }>();
-        for (const id of order) {
-            const n = nodes.find(n => n.id === id);
-            const h = (n?.style?.height ?? measuredSizeRef.current[id]?.height ?? 280);
-            nextPos.set(id, { x, y: currentY });
-            currentY += h + spacing;
-        }
-        setFocusIds(new Set(neighborIds));
-        setNodes(prev => prev.map(n => {
-            const inFocus = neighborIds.has(n.id);
-            const pos = nextPos.get(n.id);
-            if (inFocus && pos) {
-                return { ...n, position: pos, data: { ...n.data, dim: false } } as any;
+            if (degraded.length) {
+                const token = ++refineTokenRef.current;
+                const remaining = new Set(degraded);
+                let chunk = 0;
+                const step = () => {
+                    refineHandleRef.current = null;
+                    if (token !== refineTokenRef.current || !remaining.size || chunk++ >= MAX_REFINE_CHUNKS) return;
+                    // Slice to ROUTE_CHUNK_SIZE: an oversized batch trips the
+                    // router's cheap-only guard and could never upgrade.
+                    const batch = inputs.filter(i => remaining.has(i.id)).slice(0, ROUTE_CHUNK_SIZE);
+                    const result = routeEdges(batch, rectById, obstacles, geometryHash, REFINE_BUDGET_MS);
+                    for (const i of batch) remaining.delete(i.id);
+                    for (const id of result.degraded) remaining.add(id);
+                    edgesRef.current = mergeRoutes(edgesRef.current, result.paths);
+                    setEdges(edgesRef.current);
+                    if (remaining.size) scheduleIdle(step);
+                };
+                scheduleIdle(step);
             }
-            return { ...n, data: { ...n.data, dim: true } } as any;
-        }));
-    }
-
-    function clearFocus() {
-        setFocusIds(null);
-        setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, dim: false } } as any)));
-    }
-
-    const elevatedPairRef = useRef<{ edgeId: string | null; aId: string | null; bId: string | null }>({ edgeId: null, aId: null, bId: null });
-
-    function getNodeWidth(id: string): number {
-        const n = nodesRef.current.find(nn => nn.id === id);
-        const measured = measuredSizeRef.current[id];
-        return (n?.style?.width ?? measured?.width ?? 480);
-    }
-
-    function getNodeHeight(id: string): number {
-        const n = nodesRef.current.find(nn => nn.id === id);
-        const measured = measuredSizeRef.current[id];
-        return (n?.style?.height ?? measured?.height ?? 280);
-    }
-
-    function computeRowPositions(list: Node[]): Map<string, { x: number; y: number }> {
-        const pos = new Map<string, { x: number; y: number }>();
-        const spacing = 20;
-        let currentX = 40;
-        const y = 60;
-        for (const n of list) {
-            pos.set(n.id, { x: currentX, y });
-            const width = getNodeWidth(n.id);
-            currentX += width + spacing;
+            return merged;
+        } catch (err) {
+            console.warn('[code-canvas] edge routing failed, keeping previous paths:', err);
+            return edgeList;
         }
-        return pos;
     }
 
-    function elevateEdgePair(edge: any) {
+    /** Rebuild the edge array, reusing object identity wherever the path is unchanged. */
+    function mergeRoutes(edgeList: any[], paths: Map<string, string>): any[] {
+        let changed = false;
+        const next = edgeList.map(e => {
+            const d = paths.get(e.id);
+            if (d === undefined || d === e.data?.d) return e;
+            changed = true;
+            return { ...e, data: { ...e.data, d } };
+        });
+        return changed ? next : edgeList;
+    }
+
+    async function runLayout(algoOverride?: LayoutAlgo) {
+        const source = nodesRef.current;
+        if (!source.length) return;
+        const token = ++layoutTokenRef.current;
+        const nodesToLayout = source.map(n => ({
+            ...n,
+            width: n.style?.width ?? FOLDER_W,
+            height: n.style?.height ?? FOLDER_H,
+        }));
         try {
-            const aId: string | undefined = edge?.source;
-            const bId: string | undefined = edge?.target;
-            if (!aId || !bId) return;
-            const prevPair = elevatedPairRef.current;
-            const samePair = (prevPair.aId && prevPair.bId) && ((prevPair.aId === aId && prevPair.bId === bId) || (prevPair.aId === bId && prevPair.bId === aId));
-            if (edge?.id && prevPair.edgeId === edge.id) return; // exact same link
-            if (!edge?.id && samePair) return; // same endpoints
+            const layouted = await getLayoutedElements(nodesToLayout as any, edgesRef.current, algoOverride ?? algoRef.current);
+            if (token !== layoutTokenRef.current) return; // superseded
+            const ordered = orderNodesParentsFirst(layouted as any) as Node[];
+            nodesRef.current = ordered;
+            const routed = applyRoutes(ordered, edgesRef.current);
+            edgesRef.current = routed;
+            setNodes(ordered);
+            setEdges(routed);
+        } catch (error) {
+            console.warn('[code-canvas] layout failed:', error);
+        }
+    }
 
-            const sharedIds = new Set<string>();
-            if (prevPair.aId && (prevPair.aId === aId || prevPair.aId === bId)) sharedIds.add(prevPair.aId);
-            if (prevPair.bId && (prevPair.bId === aId || prevPair.bId === bId)) sharedIds.add(prevPair.bId);
+    function rerouteFromCurrentPositions() {
+        const routed = applyRoutes(nodesRef.current, edgesRef.current);
+        if (routed !== edgesRef.current) {
+            edgesRef.current = routed;
+            setEdges(routed);
+        }
+    }
 
-            const spacing = 20;
-            const yRow = 60;
+    /**
+     * Drop the baked circuit geometry for the duration of a drag.
+     *
+     * `data.d` is a path frozen at the last routing pass, so while a node is
+     * moving it describes where that node USED to be: the wire visibly detaches
+     * and only snaps back on release. Clearing it makes CircuitEdge fall back to
+     * React Flow's own path, which is recomputed from live node positions every
+     * frame, so edges track the node as it moves. The circuit routes come back
+     * via the reroute on drag stop.
+     *
+     * Routing itself is untouched — this only removes stale geometry, so the
+     * "never route per frame" rule still holds.
+     */
+    function releaseBakedRoutes() {
+        let changed = false;
+        const next = edgesRef.current.map((e: any) => {
+            if (!e.data?.d) return e;
+            changed = true;
+            return { ...e, data: { ...e.data, d: undefined } };
+        });
+        if (!changed) return;
+        edgesRef.current = next;
+        setEdges(next);
+    }
 
-            // Temporarily freeze interactions; prevents internal auto panning/viewport changes during updates
-            try { rfInstanceRef.current?.setInteractive?.(false); } catch { }
+    // -----------------------------------------------------------------------
+    // Expansion
+    // -----------------------------------------------------------------------
 
-            setFocusIds(null);
-            setNodes(prev => {
-                // First: restore everyone to row positions except shared elevated node (if any)
-                const posMap = computeRowPositions(prev as any);
-                let next = prev.map(n => (sharedIds.has(n.id) ? n : ({ ...n, position: posMap.get(n.id)! } as any)));
+    const toggleFolder = useCallback((id: string) => {
+        setExpanded(prev => prev.has(id)
+            ? collapseWithDescendants(modelRef.current, prev, id)
+            : expandWithAncestors(modelRef.current, prev, id));
+    }, []);
 
-                // Then: elevate the new pair
-                if (sharedIds.has(aId)) {
-                    const shared = next.find(n => n.id === aId)!;
-                    const sharedX = (shared as any).position.x;
-                    const sharedY = (shared as any).position.y;
-                    const aWidth = getNodeWidth(aId);
-                    const bWidth = getNodeWidth(bId);
-                    const bHeight = getNodeHeight(bId);
-                    const bX = sharedX + aWidth + spacing;
-                    const bY = sharedY; // keep same vertical as shared for minimal movement
-                    next = next.map(n => (n.id === bId ? ({ ...n, position: { x: bX, y: bY } } as any) : n));
-                } else if (sharedIds.has(bId)) {
-                    const shared = next.find(n => n.id === bId)!;
-                    const sharedX = (shared as any).position.x;
-                    const sharedY = (shared as any).position.y;
-                    const aWidth = getNodeWidth(aId);
-                    const aHeight = getNodeHeight(aId);
-                    const aX = sharedX - aWidth - spacing;
-                    const aY = sharedY;
-                    next = next.map(n => (n.id === aId ? ({ ...n, position: { x: aX, y: aY } } as any) : n));
-                } else {
-                    // No shared node: elevate both newly, top-aligned
-                    const aWidth = getNodeWidth(aId);
-                    const aHeight = getNodeHeight(aId);
-                    const bHeight = getNodeHeight(bId);
-                    const aX = 40;
-                    const topY = yRow - Math.max(aHeight, bHeight) - spacing;
-                    const bX = aX + aWidth + spacing;
-                    next = next.map(n => {
-                        if (n.id === aId) return { ...n, position: { x: aX, y: topY } } as any;
-                        if (n.id === bId) return { ...n, position: { x: bX, y: topY } } as any;
-                        return n;
-                    });
+    /**
+     * `Expand (E)`: toggles the selected folders. A selected FILE still asks the
+     * host to pull more of the import graph in, which is what E used to do.
+     */
+    function expandSelection() {
+        const ids = selectedIds.length ? selectedIds : (nodesRef.current.filter((n: any) => n.selected).map((n: any) => n.id));
+        if (!ids.length) return;
+        const folderIds = ids.filter(id => modelRef.current.nodes.get(id)?.kind === 'folder');
+        const fileIds = ids.filter(id => modelRef.current.nodes.get(id)?.kind === 'file');
+        if (folderIds.length) {
+            setExpanded(prev => {
+                let next = prev;
+                for (const id of folderIds) {
+                    next = next.has(id)
+                        ? collapseWithDescendants(modelRef.current, next, id)
+                        : expandWithAncestors(modelRef.current, next, id);
                 }
-
-                elevatedPairRef.current = { edgeId: edge?.id ?? `${aId}->${bId}`, aId, bId };
                 return next;
             });
-
-            // Re-enable interactions right after updates
-            setTimeout(() => { try { rfInstanceRef.current?.setInteractive?.(true); } catch { } }, 0);
-        } catch { }
+        }
+        if (fileIds.length) vscode?.postMessage({ type: 'expand', ids: fileIds });
     }
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if ((e.key === 'e' || e.key === 'E')) expandSelection(); };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [nodes]);
+    function expandAllTopLevel() {
+        setExpanded(prev => {
+            const next = new Set(prev);
+            const roots = modelRef.current.displayRoots;
+            const allOpen = roots.every(id => next.has(id) || modelRef.current.nodes.get(id)?.kind !== 'folder');
+            for (const id of roots) {
+                if (modelRef.current.nodes.get(id)?.kind !== 'folder') continue;
+                if (allOpen) next.delete(id); else next.add(id);
+            }
+            return next;
+        });
+    }
+
+    /** Surface files the host flagged (changed / git) by expanding their folders. */
+    function revealFiles(paths: string[]) {
+        if (!paths?.length) return;
+        const currentModel = modelRef.current;
+        const wanted = new Set(paths);
+        setExpanded(prev => {
+            let next = prev;
+            for (const node of currentModel.nodes.values()) {
+                if (node.kind !== 'file' || !node.path || !wanted.has(node.path)) continue;
+                if (node.parentId) next = expandWithAncestors(currentModel, next, node.parentId);
+            }
+            return next;
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Interaction
+    // -----------------------------------------------------------------------
+
+    const openFileByPath = useCallback((path: string) => { vscode?.postMessage({ type: 'openFile', path }); }, []);
+
+    function handleTokenClick({ path, line, character }: any) {
+        if (!showRefs) return;
+        vscode?.postMessage({ type: 'requestRefs', path, line, character });
+        vscode?.postMessage({ type: 'requestDefOpen', path, line, character });
+        const base = nodesRef.current.find(n => (n.data as any)?.path === path);
+        if (base) focusNodesForId(base.id);
+    }
+    const tokenClickRef = useRef(handleTokenClick);
+    tokenClickRef.current = handleTokenClick;
+    const onTokenClick = useCallback((payload: any) => tokenClickRef.current(payload), []);
+
+    /** Focus = dim + edge filtering ONLY. Repositioning would break the layout. */
+    function focusNodesForId(baseId: string) {
+        const neighbours = new Set<string>([baseId]);
+        for (const e of edgesRef.current) {
+            if (e.source === baseId) neighbours.add(e.target);
+            if (e.target === baseId) neighbours.add(e.source);
+        }
+        setFocusIds(neighbours);
+    }
+
+    function clearFocus() { setFocusIds(null); }
 
     useEffect(() => {
-        const down = (e: KeyboardEvent) => {
-            if (e.code === 'Space') {
-                try { rfInstanceRef.current?.setPaneDragging?.(true); } catch { }
-            }
+        const onKey = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+            if (e.key === 'e' || e.key === 'E') expandSelection();
         };
-        const up = (e: KeyboardEvent) => {
-            if (e.code === 'Space') {
-                try { rfInstanceRef.current?.setPaneDragging?.(false); } catch { }
-            }
-        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedIds]);
+
+    useEffect(() => {
+        const down = (e: KeyboardEvent) => { if (e.code === 'Space') { try { rfInstanceRef.current?.setPaneDragging?.(true); } catch { } } };
+        const up = (e: KeyboardEvent) => { if (e.code === 'Space') { try { rfInstanceRef.current?.setPaneDragging?.(false); } catch { } } };
         window.addEventListener('keydown', down);
         window.addEventListener('keyup', up);
         return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, []);
 
+    // Delete hides nodes from the projection (and with them their descendants),
+    // rather than mutating the React Flow array, so the next re-projection does
+    // not resurrect them.
     useEffect(() => {
         const onDelete = (e: KeyboardEvent) => {
-            if (e.key === 'Delete') {
-                e.preventDefault();
-                const currentNodes = nodesRef.current;
-                const selected = new Set(selectedIds);
-                if (selected.size === 0) return;
-
-                const selectedGroupIds = new Set(
-                    currentNodes.filter(n => selected.has(n.id) && (n as any).type === 'group').map(n => n.id)
-                );
-
-                const idsToRemove = new Set<string>();
-                for (const gid of selectedGroupIds) idsToRemove.add(gid);
-
-                const stack: string[] = Array.from(selectedGroupIds);
-                while (stack.length) {
-                    const gid = stack.pop()!;
-                    for (const n of currentNodes) {
-                        const parent = (n as any).parentNode as string | undefined;
-                        if (parent === gid && !idsToRemove.has(n.id)) {
-                            idsToRemove.add(n.id);
-                            if ((n as any).type === 'group') stack.push(n.id);
-                        }
-                    }
-                }
-
-                for (const id of selected) {
-                    if (!idsToRemove.has(id)) idsToRemove.add(id);
-                }
-
-                if (idsToRemove.size === 0) return;
-
-                setNodes(prev => prev.filter(n => !idsToRemove.has(n.id)) as any);
-                setEdges(prev => prev.filter(e => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)));
-                setSelectedIds([]);
-
-                scheduleAutoLayout();
-            }
+            const target = e.target as HTMLElement | null;
+            if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+            if (e.key !== 'Delete' || !selectedIds.length) return;
+            e.preventDefault();
+            setHidden(prev => {
+                const next = new Set(prev);
+                for (const id of selectedIds) next.add(id);
+                return next;
+            });
+            setSelectedIds([]);
         };
         window.addEventListener('keydown', onDelete);
         return () => window.removeEventListener('keydown', onDelete);
     }, [selectedIds]);
 
-    // render code previews lazily inside each node
-
     const VISIBLE_ZOOM_THRESHOLD = 0.65; // below this, render placeholder
 
     const codeRefs = useRef<Record<string, React.RefObject<import('./code/CodeCard').CodeCardHandle>>>({});
-    const hoveredIdsRef = useRef<Set<string>>(new Set());
-    const [hoveredIds, setHoveredIds] = useState<Set<string>>(new Set());
-    const [hoverOverlay, setHoverOverlay] = useState<{ id: string; label: string; x: number; y: number } | null>(null);
-    const [selectedOverlay, setSelectedOverlay] = useState<{ id: string; label: string; x: number; y: number } | null>(null);
-    const selectedIdsRef = useRef<string[]>([]);
-    useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
-    function setHovered(id: string | null, on: boolean) {
-        const next = new Set(hoveredIdsRef.current);
-        if (id) {
-            if (on) next.add(id); else next.delete(id);
+    // Node hover deliberately shows NOTHING. A file's or folder's description is
+    // already on the node itself, so a floating banner only repeated it while
+    // covering whatever sat behind. Edges still get a tooltip — a wire has
+    // nowhere to render its own symbol list.
+
+    // Edge hover is throttled to one update per frame and goes
+    // straight to the overlay ref — it never touches App state, so the canvas is
+    // not re-rendered while the pointer tracks a wire.
+    const edgeHoverFrameRef = useRef<number | null>(null);
+    const pendingEdgeHoverRef = useRef<{ edge: any; x: number; y: number } | null>(null);
+
+    function showEdgeTooltip(event: React.MouseEvent, edge: any) {
+        pendingEdgeHoverRef.current = { edge, x: event.clientX, y: event.clientY };
+        if (edgeHoverFrameRef.current != null) return;
+        edgeHoverFrameRef.current = requestAnimationFrame(() => {
+            edgeHoverFrameRef.current = null;
+            const pending = pendingEdgeHoverRef.current;
+            pendingEdgeHoverRef.current = null;
+            if (!pending) return;
+            const source = nodesRef.current.find(n => n.id === pending.edge.source);
+            const target = nodesRef.current.find(n => n.id === pending.edge.target);
+            overlayRef.current?.showEdge({
+                sourceLabel: (source?.data as any)?.label ?? pending.edge.source,
+                targetLabel: (target?.data as any)?.label ?? pending.edge.target,
+                aggregated: !!pending.edge?.data?.aggregated,
+                relationships: pending.edge?.data?.relationships ?? [],
+                x: Math.round(pending.x + 16),
+                y: Math.round(pending.y + 16),
+            });
+        });
+    }
+
+    function hideEdgeTooltip() {
+        pendingEdgeHoverRef.current = null;
+        if (edgeHoverFrameRef.current != null) {
+            cancelAnimationFrame(edgeHoverFrameRef.current);
+            edgeHoverFrameRef.current = null;
         }
-        hoveredIdsRef.current = next; setHoveredIds(next);
+        overlayRef.current?.showEdge(null);
     }
 
-    function updateHoverOverlay(nd: any | null) {
-        if (!nd) { setHoverOverlay(null); return; }
-        try {
-            const el = document.querySelector(`.react-flow__node[data-id="${nd.id}"]`) as HTMLElement | null;
-            if (!el) { setHoverOverlay(null); return; }
-            const r = el.getBoundingClientRect();
-            const hx = Math.round(r.left + 8);
-            const hy = Math.round(r.top + 8);
-            const label = (nd?.data as any)?.label ?? nd?.id;
-            setHoverOverlay({ id: nd.id, label, x: hx, y: hy });
-        } catch { setHoverOverlay(null); }
-    }
+    const canvasCtx = useMemo<CanvasContextValue>(() => ({
+        zoomOk, wrap,
+        codeCacheRef, codeRefs,
+        onTokenClick, onOpenFile: openFileByPath, onToggleFolder: toggleFolder,
+    }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder]);
 
-    function updateSelectedOverlayById(id: string | null) {
-        if (!id) { setSelectedOverlay(null); return; }
-        try {
-            const el = document.querySelector(`.react-flow__node[data-id="${id}"]`) as HTMLElement | null;
-            if (!el) { setSelectedOverlay(null); return; }
-            const r = el.getBoundingClientRect();
-            const sx = Math.round(r.left + 8);
-            const sy = Math.round(r.top + 8);
-            const node = nodesRef.current.find(n => n.id === id);
-            const label = ((node as any)?.data?.label) || id;
-            setSelectedOverlay({ id, label, x: sx, y: sy });
-        } catch { setSelectedOverlay(null); }
-    }
+    // P1-2: selective store subscriptions rather than the whole store.
+    const activeTagFilters = useMetaStore(s => s.activeTagFilters);
+    const tagFilterMode = useMetaStore(s => s.tagFilterMode);
+    const files = useMetaStore(s => s.files);
 
-    function computePlaceholderFontPx(label: string, widthPx: number | undefined): number {
-        const width = Math.max(120, (widthPx ?? 480) * 0.9);
-        const chars = Math.max(1, (label || '').length);
-        const px = Math.min(96, Math.max(18, Math.floor(width / (chars * 0.55))));
-        return px;
-    }
-
-    function updateOverlayForSelected() {
-        const ids = selectedIdsRef.current;
-        if (!ids || ids.length === 0) { setSelectedOverlay(null); return; }
-        const id = ids[ids.length - 1];
-        scheduleSelectedUpdate(id);
-    }
-
-    const nodeTypesLocal = useMemo(() => ({
-        file: (p: any) => {
-            const n = p.data;
-            const content = codeCacheRef.current[n.path] ?? n.path;
-            const shouldShowCode = zoomOk;
-            if (!codeRefs.current[p.id]) codeRefs.current[p.id] = React.createRef();
-            const { getFileMeta, setCollapsed } = useMetaStore();
-            const meta = getFileMeta(n.path);
-            const collapsed = meta.collapsed ?? false;
-            const updateNodeInternals = useUpdateNodeInternals();
-            
-            useEffect(() => {
-                updateNodeInternals(p.id);
-            }, [collapsed, meta.descriptionExpanded, p.id, updateNodeInternals]);
-
-            const handleLines: number[] = (() => {
-                const s = new Set<number>();
-                for (const e of edges as any[]) {
-                    if (e.source === p.id && e.data?.sourceLine != null) s.add(e.data.sourceLine);
-                    if (e.target === p.id && e.data?.targetLine != null) s.add(e.data.targetLine);
-                }
-                return Array.from(s).sort((a, b) => a - b).slice(0, 200);
-            })();
-            const isHover = hoveredIds.has(p.id) || !!p.selected;
-            const placeholderSize = computePlaceholderFontPx(n.label, p.width ?? (measuredSizeRef.current[p.id]?.width ?? (p?.style?.width ?? 480)));
-            return (
-                <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: n.dim ? 0.25 : 1 }}>
-                    <div className="file-node-header label-fixed code-card-header" onDoubleClick={() => onOpenFile(p)}>
-                        <span className="code-card-filename">{n.label}</span>
-                        <button
-                          className="code-card-collapse-btn"
-                          title={collapsed ? 'Expand node' : 'Collapse node'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCollapsed(n.path, !collapsed);
-                          }}
-                        >
-                          {collapsed ? '+' : '−'}
-                        </button>
-                    </div>
-                    
-                    <DescriptionPanel filePath={n.path} />
-                    <TagBar filePath={n.path} />
-
-                    {/* in-node hover hint removed; global overlays are used */}
-                    {!collapsed && (shouldShowCode ? (
-                        <CodeCard
-                            ref={codeRefs.current[p.id]}
-                            key={n.path}
-                            file={n.path}
-                            lang={n.lang}
-                            content={content}
-                            onTokenClick={onTokenClick}
-                            wrap={wrap}
-                            onLinePositions={(positions) => { linePosRef.current[p.id] = positions; }}
-                            onMeasured={({ width, height }) => {
-                                if (isFlingingRef.current || isDraggingViewRef.current) return;
-                                const last = measuredSizeRef.current[p.id];
-                                if (last && last.width === width && last.height === height) return;
-                                measuredSizeRef.current[p.id] = { width, height };
-                                enqueueSizeUpdate(p.id, { width, height });
-                            }}
-                        />
-                    ) : (
-                        <div className="node-placeholder-body" data-label={n.label}>
-                            <div className="node-placeholder-title" style={{ fontSize: placeholderSize }}>{n.label}</div>
-                            <div style={{ opacity: 0.75 }}>Zoom in to view code</div>
-                        </div>
-                    ))}
-                    {/* default center handles */}
-                    <Handle type="source" position={Position.Right} id={`line-0`} />
-                    <Handle type="target" position={Position.Left} id={`line-0`} />
-                    {/* per-line handles anchored by top offset */}
-                    {handleLines.map((ln) => {
-                        const top = (linePosRef.current[p.id]?.find(x => x.line === ln)?.top) ?? (headerHeight + prePaddingTop + ln * lineHeight);
-                        return (
-                            <React.Fragment key={ln}>
-                                <Handle
-                                    type="source"
-                                    position={Position.Right}
-                                    id={`line-${ln}`}
-                                    style={{ top }}
-                                />
-                                <Handle
-                                    type="target"
-                                    position={Position.Left}
-                                    id={`line-${ln}`}
-                                    style={{ top }}
-                                />
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
-            );
-        },
-        group: (p: any) => {
-            // Reuse default GroupNode visual but rely on global overlay for z-top label
-            return GroupNode(p);
-        },
-    }), [edges, zoomOk, wrap, hoveredIds]);
-
-    const { activeTagFilters, tagFilterMode, files } = useMetaStore();
-
-    // Compute which nodes to dim based on tag filters
     const dimmedIds = useMemo(() => {
         if (activeTagFilters.length === 0) return new Set<string>();
         return new Set(
@@ -751,27 +771,47 @@ export default function App() {
         );
     }, [nodes, activeTagFilters, tagFilterMode, files]);
 
-    // Throttle hover overlay updates to animation frame
-    const hoverFrameRef = useRef<number | null>(null);
-    function scheduleHoverUpdate(nd: any | null) {
-        if (hoverFrameRef.current != null) cancelAnimationFrame(hoverFrameRef.current);
-        hoverFrameRef.current = requestAnimationFrame(() => { updateHoverOverlay(nd); hoverFrameRef.current = null; });
-    }
+    const displayNodes = useMemo(() => {
+        const dimming = dimmedIds.size > 0 || !!focusIds;
+        let base = nodes as any[];
+        if (dimming) {
+            base = base.map(n => {
+                const dim = dimmedIds.has(n.id) || (focusIds ? !focusIds.has(n.id) : false);
+                return dim === !!n.data.dim ? n : { ...n, data: { ...n.data, dim } };
+            });
+        }
+        if (selectedIds.length === 0) return base;
+        const selectedSet = new Set(selectedIds);
+        const linked = new Set<string>(selectedSet);
+        for (const e of edges as any[]) {
+            if (selectedSet.has(e.source)) linked.add(e.target);
+            if (selectedSet.has(e.target)) linked.add(e.source);
+        }
+        return base.map(n => linked.has(n.id)
+            ? { ...n, className: `${n.className ? n.className + ' ' : ''}node-linked` }
+            : n);
+    }, [nodes, dimmedIds, selectedIds, edges, focusIds]);
 
-    // Throttle selected overlay updates
-    const selectedFrameRef = useRef<number | null>(null);
-    function scheduleSelectedUpdate(id: string | null) {
-        if (selectedFrameRef.current != null) cancelAnimationFrame(selectedFrameRef.current);
-        selectedFrameRef.current = requestAnimationFrame(() => { updateSelectedOverlayById(id); selectedFrameRef.current = null; });
-    }
+    const displayEdges = useMemo(() => {
+        if (!showEdges) return [];
+        const base = focusIds
+            ? (edges as any[]).filter(e => focusIds.has(e.source) && focusIds.has(e.target))
+            : (edges as any[]);
+        if (selectedIds.length === 0) return base;
+        const selectedSet = new Set(selectedIds);
+        return base.map(e => (selectedSet.has(e.source) || selectedSet.has(e.target))
+            ? { ...e, className: `${e.className ? e.className + ' ' : ''}edge-linked` }
+            : e);
+    }, [edges, showEdges, focusIds, selectedIds]);
 
-    // Removed document mousemove hide; rely on node enter/leave for hover visibility
+    const expandLabel = model.displayRoots.some(id => expanded.has(id)) ? 'Collapse All' : 'Expand All';
 
     return (
         <div className="root">
             <div className="toolbar">
                 <TagFilterToolbar />
-                <button onClick={() => layout()}>Relayout</button>
+                <button onClick={() => runLayout()}>Relayout</button>
+                <button onClick={expandAllTopLevel}>{expandLabel}</button>
                 <button onClick={() => vscode?.postMessage({ type: 'loadMore' })}>Load 25 more</button>
                 <button onClick={() => vscode?.postMessage({ type: 'requestChanged' })}>Open Changed (⇧O)</button>
                 <button onClick={() => vscode?.postMessage({ type: 'requestGraph' })}>Reload</button>
@@ -779,299 +819,234 @@ export default function App() {
                 <button onClick={() => vscode?.postMessage({ type: 'toggleRefs' })}>Refs (R)</button>
                 <button onClick={() => setWrap(w => !w)}>{wrap ? 'Unwrap' : 'Wrap'}</button>
                 <button onClick={() => setShowEdges(s => !s)}>{showEdges ? 'Hide Edges' : 'Show Edges'}</button>
-                <button onClick={() => vscode?.postMessage({ type: 'toggleEdges' })}>Toggle Edges (Global)</button>
                 <button onClick={() => vscode?.postMessage({ type: 'seedFolder' })}>Seed Folder…</button>
+                <select
+                    value={algo}
+                    title="Layout algorithm"
+                    onChange={(e) => { const a = normalizeAlgo(e.target.value); setAlgo(a); algoRef.current = a; void runLayout(a); }}
+                >
+                    <option value="radial">Radial (orphans centre)</option>
+                    <option value="elk">ELK (layered)</option>
+                    <option value="dagre">Dagre</option>
+                    <option value="force">Force</option>
+                </select>
+                {hidden.size > 0 ? <button onClick={() => setHidden(new Set())}>Restore Hidden ({hidden.size})</button> : null}
                 {focusIds ? (<button onClick={clearFocus}>Clear Focus</button>) : null}
             </div>
-            <ReactFlow
-                nodes={((): any => {
-                    let baseNodes = nodes as any[];
-                    // Apply tag filtering (dimming)
-                    if (dimmedIds.size > 0) {
-                        baseNodes = baseNodes.map(n => ({
-                            ...n,
-                            data: { ...n.data, dim: n.data.dim || dimmedIds.has(n.id) }
-                        }));
-                    }
-                    if (selectedIds.length === 0) return baseNodes;
-                    const selectedSet = new Set(selectedIds);
-                    const linked = new Set<string>();
-                    for (const e of edges as any[]) {
-                        if (selectedSet.has(e.source)) linked.add(e.target);
-                        if (selectedSet.has(e.target)) linked.add(e.source);
-                    }
-                    // Always include the selected nodes themselves
-                    for (const id of selectedSet) linked.add(id);
-                    return baseNodes.map(n => linked.has(n.id)
-                        ? { ...n, className: `${(n as any).className ? (n as any).className + ' ' : ''}node-linked` }
-                        : n);
-                })()}
-                edges={((): any => {
-                    const base = showEdges ? (focusIds ? (edges as any[]).filter(e => focusIds.has(e.source) && focusIds.has(e.target)) : edges) : [];
-                    if (selectedIds.length === 0) return base;
-                    const selectedSet = new Set(selectedIds);
-                    const nodesMap = new Map(nodesRef.current.map((n: any) => [n.id, n]));
-                    const isDescendantOfSelectedGroup = (id: string): boolean => {
-                        let current: any = nodesMap.get(id);
-                        let guard = 0;
-                        while (current && current.parentNode && guard++ < 1000) {
-                            if (selectedSet.has(current.parentNode)) return true;
-                            current = nodesMap.get(current.parentNode);
-                        }
-                        return false;
-                    };
-                    return (base as any[]).map(e => (
-                        selectedSet.has(e.source) ||
-                        selectedSet.has(e.target) ||
-                        isDescendantOfSelectedGroup(e.source) ||
-                        isDescendantOfSelectedGroup(e.target)
-                    ) ? { ...e, style: { ...(e.style || {}), stroke: '#a78bfa' }, className: `${(e as any).className ? (e as any).className + ' ' : ''}edge-linked` } : e);
-                })()}
-                nodeTypes={nodeTypesLocal as any}
-                panOnDrag={[1, 2]} /* left or middle mouse */
-                panOnScroll={true}
-                selectionOnDrag
-                onNodeMouseEnter={(_e, nd) => { setHovered(nd.id, true); scheduleHoverUpdate(nd); }}
-                onNodeMouseMove={(_e, nd) => { scheduleHoverUpdate(nd); }}
-                onNodeMouseLeave={(_e, nd) => { setHovered(nd.id, false); scheduleHoverUpdate(null); }}
-                onlyRenderVisibleElements
-                onInit={(inst) => {
-                    rfInstanceRef.current = inst;
-                    try {
-                        const vp = inst?.getViewport?.();
-                        if (vp) {
-                            setZoomOk(vp.zoom >= VISIBLE_ZOOM_THRESHOLD);
-                            viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
-                            prevVpRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
-                            try { document.documentElement.style.setProperty('--rf-zoom', String(vp.zoom)); } catch { }
-                        }
-                        const container = document.querySelector('.react-flow') as HTMLElement | null;
-                        const onWheel = (e: WheelEvent) => {
-                            try {
-                                const now = performance.now();
-                                lastInputRef.current = 'wheel';
-                                lastZoomTimeRef.current = now;
-                                zoomActiveRef.current = true;
+            <CanvasContext.Provider value={canvasCtx}>
+                <ReactFlow
+                    nodes={displayNodes as any}
+                    edges={displayEdges as any}
+                    nodeTypes={nodeTypes as any}
+                    edgeTypes={edgeTypes as any}
+                    panOnDrag={[1, 2]} /* left or middle mouse */
+                    panOnScroll={true}
+                    selectionOnDrag
+                    /* Enter only, deliberately: re-anchoring on every move is what
+                       made the banner appear to trail the pointer around a folder. */
+                    onEdgeMouseEnter={(e, edge) => showEdgeTooltip(e as any, edge)}
+                    onEdgeMouseMove={(e, edge) => showEdgeTooltip(e as any, edge)}
+                    onEdgeMouseLeave={hideEdgeTooltip}
+                    onlyRenderVisibleElements
+                    onInit={(inst) => {
+                        rfInstanceRef.current = inst;
+                        try {
+                            const vp = inst?.getViewport?.();
+                            if (vp) {
+                                setZoomOk(vp.zoom >= VISIBLE_ZOOM_THRESHOLD);
+                                viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
+                                prevVpRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
+                                try { document.documentElement.style.setProperty('--rf-zoom', String(vp.zoom)); } catch { }
+                            }
+                            const container = document.querySelector('.react-flow') as HTMLElement | null;
+                            const onWheel = () => {
+                                try {
+                                    const now = performance.now();
+                                    lastInputRef.current = 'wheel';
+                                    lastZoomTimeRef.current = now;
+                                    zoomActiveRef.current = true;
+                                    gestureZoomedRef.current = true;
+                                    wheelCooldownUntilRef.current = now + WHEEL_COOLDOWN_MS;
 
-                                // NEW: this gesture has zoom; block fling until cooldown passes
-                                gestureZoomedRef.current = true;
-                                wheelCooldownUntilRef.current = now + WHEEL_COOLDOWN_MS;
-
-                                const vpEl = document.querySelector('.react-flow__viewport');
-                                if (!vpEl) return;
-                                vpEl.classList.add('zoom-smooth');
-
-                                // Zoom invalidates drag samples
-                                moveSamplesRef.current = [];
-
-                                if (zoomSmoothTimerRef.current) window.clearTimeout(zoomSmoothTimerRef.current);
-                                zoomSmoothTimerRef.current = window.setTimeout(() => {
-                                    vpEl.classList.remove('zoom-smooth');
-                                    // let onMoveEnd clear zoomActive; we still have cooldown guard
-                                }, 420);
-                            } catch { }
-                        };
-                        container?.addEventListener('wheel', onWheel, { passive: true } as any);
-                        (window as any).__rf_wheel_cleanup = () => container?.removeEventListener('wheel', onWheel as any);
-                    } catch { }
-                }}
-                onNodeClick={(_e, node: any) => { setFocusIds(null); }}
-                onNodeDragStart={(_evt, node) => {
-                    try {
-                        const el = document.querySelector(`.react-flow__node[data-id="${node.id}"]`);
-                        el?.classList.add('no-animate');
-                        const vpEl = document.querySelector('.react-flow__viewport');
-                        vpEl?.classList.remove('zoom-smooth');
-                        isDraggingViewRef.current = true;
-                        lastInputRef.current = 'drag';
+                                    const vpEl = document.querySelector('.react-flow__viewport');
+                                    if (!vpEl) return;
+                                    vpEl.classList.add('zoom-smooth');
+                                    moveSamplesRef.current = [];
+                                    if (zoomSmoothTimerRef.current) window.clearTimeout(zoomSmoothTimerRef.current);
+                                    zoomSmoothTimerRef.current = window.setTimeout(() => {
+                                        vpEl.classList.remove('zoom-smooth');
+                                    }, 420);
+                                } catch { }
+                            };
+                            container?.addEventListener('wheel', onWheel, { passive: true } as any);
+                            wheelCleanupRef.current = () => container?.removeEventListener('wheel', onWheel as any);
+                        } catch { }
+                    }}
+                    onNodeClick={() => setFocusIds(null)}
+                    onNodeDoubleClick={(_e, node: any) => { if (node.type === 'folder' || node.type === 'group') toggleFolder(node.id); }}
+                    onNodeDragStart={(_evt, node) => {
+                        try {
+                            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.add('no-animate');
+                            document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth');
+                            isDraggingViewRef.current = true;
+                            lastInputRef.current = 'drag';
+                            cancelFling();
+                            moveSamplesRef.current = [];
+                        } catch { }
+                        releaseBakedRoutes();
+                    }}
+                    onSelectionDragStart={() => releaseBakedRoutes()}
+                    onSelectionDragStop={() => rerouteFromCurrentPositions()}
+                    onNodeDragStop={(_evt, node) => {
+                        try {
+                            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.remove('no-animate');
+                            isDraggingViewRef.current = false;
+                        } catch { }
+                        // Routing happens exactly once per drag, on release — never per frame.
+                        rerouteFromCurrentPositions();
+                    }}
+                    onMoveStart={() => {
                         cancelFling();
                         moveSamplesRef.current = [];
-                    } catch { }
-                }}
-                onNodeDragStop={(_evt, node) => {
-                    try {
-                        const el = document.querySelector(`.react-flow__node[data-id="${node.id}"]`);
-                        el?.classList.remove('no-animate');
-                        isDraggingViewRef.current = false;
-                    } catch { }
-                }}
-                onMoveStart={() => {
-                    // CHANGED: treat this as a new potential pan gesture; we'll detect zoom in onMove
-                    cancelFling();
-                    moveSamplesRef.current = [];
-                    gestureZoomedRef.current = false; // NEW
-                    gesturePannedRef.current = false; // NEW
-                    zoomActiveRef.current = false;    // NEW
-                    lastInputRef.current = 'drag';    // we assume pan until onMove proves zoom
-                    isDraggingViewRef.current = true;
-
-                    try {
-                        const el = document.querySelector('.react-flow__viewport');
-                        el?.classList.remove('zoom-smooth');
-                    } catch { }
-                }}
-                onMove={(_evt, vp) => {
-                    try {
-                        if (!vp) return;
-                        if (isFlingingRef.current) { viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom }; return; }
-
-                        pendingVpRef.current = vp;
-                        if (moveFrameRef.current != null) return;
-                        moveFrameRef.current = window.requestAnimationFrame(() => {
-                            moveFrameRef.current = null;
-                            const latest = pendingVpRef.current; pendingVpRef.current = null;
-                            if (!latest) return;
-
-                            const now = performance.now();
-
-                            // Keep zoom visibility threshold working
-                            const nextZoomOk = latest.zoom >= VISIBLE_ZOOM_THRESHOLD;
-                            if (nextZoomOk !== zoomOk) setZoomOk(nextZoomOk);
-                            try { document.documentElement.style.setProperty('--rf-zoom', String(latest.zoom)); } catch { }
-
-                            // Compute deltas vs previous viewport (or last stored)
-                            const prev = prevVpRef.current ?? viewportRef.current;
-                            const dz = latest.zoom - prev.zoom;
-                            const dx = latest.x - prev.x;
-                            const dy = latest.y - prev.y;
-
-                            viewportRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
-                            prevVpRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom }; // NEW
-                            // Keep overlay pinned to selected/hovered node during viewport changes
-                            if (hoverOverlay) {
-                                scheduleHoverUpdate({ id: hoverOverlay.id, data: { label: hoverOverlay.label } });
-                            }
-                            if ((selectedIdsRef.current || []).length) {
-                                const id = selectedIdsRef.current[selectedIdsRef.current.length - 1];
-                                scheduleSelectedUpdate(id);
-                            }
-
-                            // NEW: if zoom changed at all in this gesture, mark as zoom and do not record pan samples
-                            if (Math.abs(dz) > ZOOM_EPS) {
-                                gestureZoomedRef.current = true;
-                                zoomActiveRef.current = true;
-                                lastInputRef.current = 'wheel';   // this wasn't a pure drag
-                                lastZoomTimeRef.current = now;
-                                moveSamplesRef.current = [];      // discard any pan samples
-                                return;
-                            }
-
-                            // Otherwise, it's a pan delta
-                            if (lastInputRef.current === 'drag') {
-                                gesturePannedRef.current = true;
-                                // Record movement sample for fling calculation
-                                moveSamplesRef.current.push({ t: now, x: latest.x, y: latest.y });
-
-                                // Keep only last ~120ms of drag samples
-                                const cutoff = now - 120;
-                                if (moveSamplesRef.current.length > 1) {
-                                    let i = 0; while (i < moveSamplesRef.current.length && moveSamplesRef.current[i].t < cutoff) i++;
-                                    if (i > 0) moveSamplesRef.current.splice(0, i);
-                                }
-                            }
-                        });
-                    } catch { }
-                }}
-                onMoveEnd={() => {
-                    try {
-                        isDraggingViewRef.current = false;
-                        const now = performance.now();
-
-                        // NEW: hard gates — if any zoom happened during this gesture or we're within wheel cooldown, do not fling
-                        const inWheelCooldown = now < wheelCooldownUntilRef.current || (now - lastZoomTimeRef.current) < WHEEL_COOLDOWN_MS;
-                        if (gestureZoomedRef.current || inWheelCooldown) {
-                            cancelFling();
-                            // reset gesture flags
-                            gestureZoomedRef.current = false;
-                            gesturePannedRef.current = false;
-                            zoomActiveRef.current = false;
-                            moveSamplesRef.current = [];
-                            return;
-                        }
-
-                        // Only fling after a genuine drag gesture with samples
-                        if (lastInputRef.current !== 'drag' || !gesturePannedRef.current) {
-                            cancelFling();
-                            gestureZoomedRef.current = false;
-                            gesturePannedRef.current = false;
-                            moveSamplesRef.current = [];
-                            return;
-                        }
-
-                        const samples = moveSamplesRef.current;
-                        if (!samples || samples.length < 2) {
-                            cancelFling();
-                            gestureZoomedRef.current = false;
-                            gesturePannedRef.current = false;
-                            return;
-                        }
-
-                        const first = samples[0];
-                        const lastS = samples[samples.length - 1];
-                        const dtMs = Math.max(1, lastS.t - first.t);
-
-                        // Optional extra safety: require minimal drag duration & distance
-                        const minDurationMs = 90; // require longer hold/move to allow fling
-                        const minDistancePx = 40; // require meaningful travel
-                        if (dtMs < minDurationMs || (Math.hypot(lastS.x - first.x, lastS.y - first.y) < minDistancePx)) {
-                            cancelFling(); gestureZoomedRef.current = false; gesturePannedRef.current = false; return;
-                        }
-
-                        const vx = (lastS.x - first.x) / dtMs * 1000; // px/s
-                        const vy = (lastS.y - first.y) / dtMs * 1000; // px/s
-                        const speed = Math.hypot(vx, vy);
-                        const startThreshold = 700; // increase fling threshold to avoid accidental flings
-
-                        if (speed >= startThreshold) {
-                            startFling(vx, vy);
-                        } else {
-                            cancelFling();
-                        }
-
-                        // reset gesture flags after deciding
                         gestureZoomedRef.current = false;
                         gesturePannedRef.current = false;
-                    } catch { }
-                }}
-                onEdgeClick={(_e, edge: any) => {
-                    const sl = (edge?.data?.sourceLine ?? 0);
-                    const tl = (edge?.data?.targetLine ?? 0);
-                    if (edge?.source) {
+                        zoomActiveRef.current = false;
+                        lastInputRef.current = 'drag';
+                        isDraggingViewRef.current = true;
+                        try { document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth'); } catch { }
+                    }}
+                    onMove={(_evt, vp) => {
                         try {
-                            const ref = codeRefs.current[edge.source];
-                            ref?.current?.highlight(sl);
-                            ref?.current?.scrollTo(sl);
+                            if (!vp) return;
+                            if (isFlingingRef.current) { viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom }; return; }
+
+                            pendingVpRef.current = vp;
+                            if (moveFrameRef.current != null) return;
+                            moveFrameRef.current = window.requestAnimationFrame(() => {
+                                moveFrameRef.current = null;
+                                const latest = pendingVpRef.current; pendingVpRef.current = null;
+                                if (!latest) return;
+
+                                const now = performance.now();
+                                const nextZoomOk = latest.zoom >= VISIBLE_ZOOM_THRESHOLD;
+                                if (nextZoomOk !== zoomOk) setZoomOk(nextZoomOk);
+                                try { document.documentElement.style.setProperty('--rf-zoom', String(latest.zoom)); } catch { }
+
+                                const prev = prevVpRef.current ?? viewportRef.current;
+                                const dz = latest.zoom - prev.zoom;
+
+                                viewportRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
+                                prevVpRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
+
+                                if (Math.abs(dz) > ZOOM_EPS) {
+                                    gestureZoomedRef.current = true;
+                                    zoomActiveRef.current = true;
+                                    lastInputRef.current = 'wheel';
+                                    lastZoomTimeRef.current = now;
+                                    moveSamplesRef.current = [];
+                                    return;
+                                }
+
+                                if (lastInputRef.current === 'drag') {
+                                    gesturePannedRef.current = true;
+                                    moveSamplesRef.current.push({ t: now, x: latest.x, y: latest.y });
+                                    const cutoff = now - 120;
+                                    if (moveSamplesRef.current.length > 1) {
+                                        let i = 0; while (i < moveSamplesRef.current.length && moveSamplesRef.current[i].t < cutoff) i++;
+                                        if (i > 0) moveSamplesRef.current.splice(0, i);
+                                    }
+                                }
+                            });
                         } catch { }
-                    }
-                    if (edge?.target) {
+                    }}
+                    onMoveEnd={() => {
                         try {
-                            const ref = codeRefs.current[edge.target];
-                            ref?.current?.highlight(tl);
-                            ref?.current?.scrollTo(tl);
+                            isDraggingViewRef.current = false;
+                            const now = performance.now();
+                            const inWheelCooldown = now < wheelCooldownUntilRef.current || (now - lastZoomTimeRef.current) < WHEEL_COOLDOWN_MS;
+                            if (gestureZoomedRef.current || inWheelCooldown) {
+                                cancelFling();
+                                gestureZoomedRef.current = false;
+                                gesturePannedRef.current = false;
+                                zoomActiveRef.current = false;
+                                moveSamplesRef.current = [];
+                                return;
+                            }
+                            if (lastInputRef.current !== 'drag' || !gesturePannedRef.current) {
+                                cancelFling();
+                                gestureZoomedRef.current = false;
+                                gesturePannedRef.current = false;
+                                moveSamplesRef.current = [];
+                                return;
+                            }
+                            const samples = moveSamplesRef.current;
+                            if (!samples || samples.length < 2) {
+                                cancelFling();
+                                gestureZoomedRef.current = false;
+                                gesturePannedRef.current = false;
+                                return;
+                            }
+                            const first = samples[0];
+                            const lastS = samples[samples.length - 1];
+                            const dtMs = Math.max(1, lastS.t - first.t);
+                            const minDurationMs = 90;
+                            const minDistancePx = 40;
+                            if (dtMs < minDurationMs || (Math.hypot(lastS.x - first.x, lastS.y - first.y) < minDistancePx)) {
+                                cancelFling(); gestureZoomedRef.current = false; gesturePannedRef.current = false; return;
+                            }
+                            const vx = (lastS.x - first.x) / dtMs * 1000;
+                            const vy = (lastS.y - first.y) / dtMs * 1000;
+                            if (Math.hypot(vx, vy) >= 700) startFling(vx, vy); else cancelFling();
+                            gestureZoomedRef.current = false;
+                            gesturePannedRef.current = false;
                         } catch { }
-                    }
-                    elevateEdgePair(edge);
-                }}
-                onNodesChange={(changes) => setNodes((nds: any) => applyNodeChanges(changes as any, nds as any) as any)}
-                onSelectionChange={(p: any) => { const ids = (p?.nodes || []).map((n: any) => n.id); setSelectedIds(ids); if (ids.length) scheduleSelectedUpdate(ids[ids.length - 1]); else setSelectedOverlay(null); }}
-                minZoom={0.02}
-                maxZoom={8}
-            >
-                <Background />
-                <MiniMap pannable zoomable nodeStrokeColor={(n: any): string => (n.type === 'group' ? 'transparent' : '#4f46e5')} nodeColor={(n: any): string => (n.type === 'group' ? 'transparent' : '#4f46e5')} />
-                <Controls />
-            </ReactFlow>
-            {/* Global overlays rendered above canvas to avoid clipping */}
-            {hoverOverlay && (
-                <div style={{ position: 'fixed', left: hoverOverlay.x, top: hoverOverlay.y, pointerEvents: 'none', zIndex: 2147483647 }} className="label-constant">
-                    {hoverOverlay.label}
+                    }}
+                    onEdgeClick={(_e, edge: any) => {
+                        const sl = edge?.data?.sourceLine ?? 0;
+                        const tl = edge?.data?.targetLine ?? 0;
+                        try { codeRefs.current[edge.source]?.current?.highlight(sl); codeRefs.current[edge.source]?.current?.scrollTo(sl); } catch { }
+                        try { codeRefs.current[edge.target]?.current?.highlight(tl); codeRefs.current[edge.target]?.current?.scrollTo(tl); } catch { }
+                    }}
+                    onNodesChange={(changes) => setNodes((nds: any) => applyNodeChanges(changes as any, nds as any) as any)}
+                    onSelectionChange={(p: any) => {
+                        const ids = (p?.nodes || []).map((n: any) => n.id);
+                        setSelectedIds(ids);
+                    }}
+                    minZoom={0.02}
+                    maxZoom={8}
+                >
+                    <Background />
+                    <MiniMap pannable zoomable nodeStrokeColor={() => 'rgba(255,255,255,0.55)'} nodeColor={(n: any): string => (n.type === 'group' ? 'transparent' : 'rgba(255,255,255,0.35)')} />
+                    <Controls />
+                </ReactFlow>
+            </CanvasContext.Provider>
+            {refResults && (
+                <div className="refs-panel">
+                    <div className="refs-panel-header">
+                        <span>References ({refResults.refs.length})</span>
+                        <button onClick={() => setRefResults(null)} title="Close">×</button>
+                    </div>
+                    <div className="refs-panel-list">
+                        {refResults.refs.length === 0 && <div className="refs-panel-empty">No references found.</div>}
+                        {refResults.refs.map((r, i) => {
+                            const p = uriToPath(r.uri);
+                            const label = p.split(/[\\/]/).pop() || p;
+                            const line = r.range?.start?.line ?? 0;
+                            return (
+                                <button
+                                    key={`${r.uri}-${line}-${i}`}
+                                    className="refs-panel-item"
+                                    title={`${p}:${line + 1}`}
+                                    onClick={() => vscode?.postMessage({ type: 'openFile', path: p, line })}
+                                >
+                                    {label}:{line + 1}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
-            {selectedOverlay && (
-                <div style={{ position: 'fixed', left: selectedOverlay.x, top: selectedOverlay.y, pointerEvents: 'none', zIndex: 2147483647 }} className="label-constant">
-                    {selectedOverlay.label}
-                </div>
-            )}
+            <HoverOverlay ref={overlayRef} />
             {progress && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', fontSize: 14, opacity: .8 }}>⚙ {progress}</div>}
             {emptyMsg && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 14, opacity: .8 }}>{emptyMsg}</div>}
         </div>

@@ -4,3 +4,7 @@
 !package.json
 !README.md
 !LICENSE
+
+# Source maps are build artifacts only; keep them out of the packaged VSIX.
+media/**/*.map
+dist/**/*.map

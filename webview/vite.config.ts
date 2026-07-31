@@ -6,11 +6,12 @@ export default defineConfig({
     build: {
         outDir: path.resolve(__dirname, '../extension/media'), // note ../
         emptyOutDir: true,
-        sourcemap: 'inline',          // ← embed maps + sourcesContent
-        minify: false,                // ← readable stack frames
+        // P1-1: ship a minified bundle with an EXTERNAL (not inline) source map so
+        // the production JS is no longer an ~11 MB blob held resident in memory.
+        sourcemap: true,
+        minify: true,
         rollupOptions: {
             input: path.resolve(__dirname, 'index.html'),
-            output: { sourcemapExcludeSources: false }
         },
         target: 'chrome120'
     }

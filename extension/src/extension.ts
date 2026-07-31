@@ -2,16 +2,42 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { htmlForWebview, Graph } from './util';
-import { buildIndex, subgraph } from './graph';
+import { buildIndex, describeGraph, subgraph, type Index } from './graph';
 import { getChangedFiles, watchGitState } from './git';
 import * as lsp from './lsp';
-import { readMeta, updateFileMeta } from './meta';
+import { mergeAutoDescriptions, readMeta, updateFileMeta } from './meta';
 import { FileMeta } from './types/meta';
 
 let panel: vscode.WebviewPanel | undefined;
 let idxPromise: ReturnType<typeof buildIndex> | undefined;
 let lastSeeds: string[] = [];
 let lastCap: number = 0;
+
+/**
+ * Single exit point for handing a graph to the webview.
+ *
+ * Descriptions are generated from the already-in-memory index (no extra disk
+ * reads), pushed to the webview immediately, and persisted to `.code-canvas/`
+ * in the background so a slow write never delays rendering.
+ */
+async function publishGraph(index: Index, graph: Graph, messageType: 'graph' | 'expandResult' = 'graph') {
+    if (!panel) return;
+    panel.webview.postMessage({ type: messageType, graph });
+    let descriptions: ReturnType<typeof describeGraph>;
+    try {
+        descriptions = describeGraph(index, graph);
+    } catch {
+        return;
+    }
+    panel.webview.postMessage({ type: 'autoDescriptions', entries: descriptions });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) return;
+    try {
+        await mergeAutoDescriptions(root, descriptions);
+    } catch {
+        // Caching descriptions is best-effort; a read-only workspace must not break the panel.
+    }
+}
 
 const updateTimeouts = new Map<string, NodeJS.Timeout>();
 async function debouncedUpdate(root: string, filePath: string, meta: Partial<FileMeta>) {
@@ -32,7 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
             const files = await getChangedFiles();
             panel?.webview.postMessage({ type: 'openChanged', files });
         }),
-        vscode.commands.registerCommand('codeCanvas.layout.custom', () => panel?.webview.postMessage({ type: 'layout', algo: 'custom' })),
+        // Shift+1 is the default layout: radial with orphans in the middle.
+        vscode.commands.registerCommand('codeCanvas.layout.radial', () => panel?.webview.postMessage({ type: 'layout', algo: 'radial' })),
         vscode.commands.registerCommand('codeCanvas.layout.dagre', () => panel?.webview.postMessage({ type: 'layout', algo: 'dagre' })),
         vscode.commands.registerCommand('codeCanvas.layout.elk', () => panel?.webview.postMessage({ type: 'layout', algo: 'elk' })),
         vscode.commands.registerCommand('codeCanvas.layout.force', () => panel?.webview.postMessage({ type: 'layout', algo: 'force' })),
@@ -58,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
             lastSeeds = seeds;
             lastCap = cap;
             const g: Graph = await subgraph(index, seeds, cap);
-            panel?.webview.postMessage({ type: 'graph', graph: g });
+            await publishGraph(index, g);
         }),
         vscode.commands.registerCommand('codeCanvas.loadMore', async () => {
             await ensurePanel(context);
@@ -71,20 +98,27 @@ export function activate(context: vscode.ExtensionContext) {
             const nextCap = Math.min(maxNodes, lastCap + 25);
             lastCap = nextCap;
             const g: Graph = await subgraph(index, lastSeeds, nextCap);
-            panel?.webview.postMessage({ type: 'graph', graph: g });
+            await publishGraph(index, g);
         })
     );
 
-    vscode.workspace.onDidChangeTextDocument(async (e) => {
-        if (!panel) return;
-        panel.webview.postMessage({ type: 'docChanged', file: e.document.uri.fsPath });
-    });
+    // P1-4/P2-7: notify the webview when a document is saved so the preview can
+    // refresh from real on-disk content. Registered for disposal.
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument((doc) => {
+            panel?.webview.postMessage({ type: 'docChanged', file: doc.uri.fsPath });
+        })
+    );
 
-    watchGitState(async () => {
-        if (!panel) return;
-        const files = await getChangedFiles();
-        panel.webview.postMessage({ type: 'gitChanged', files });
-    });
+    // P1-4/P2-6: watch Git state and surface changed files; the watcher's real
+    // disposer is now tracked and disposed with the extension.
+    context.subscriptions.push(
+        watchGitState(async () => {
+            if (!panel) return;
+            const files = await getChangedFiles();
+            panel.webview.postMessage({ type: 'gitChanged', files });
+        })
+    );
 }
 
 async function ensurePanel(context: vscode.ExtensionContext) { if (!panel) openPanel(context); }
@@ -132,12 +166,23 @@ function openPanel(context: vscode.ExtensionContext) {
                 const nextCap = Math.min(maxNodes, lastCap + 25);
                 lastCap = nextCap;
                 const g: Graph = await subgraph(index, lastSeeds, nextCap);
-                panel?.webview.postMessage({ type: 'graph', graph: g });
+                await publishGraph(index, g);
+                break;
+            }
+            case 'seedFolder': {
+                // P1-3: the "Seed Folder…" button routes here; reuse the command
+                // so the folder picker + subgraph flow runs end-to-end.
+                await vscode.commands.executeCommand('codeCanvas.seedFolder');
                 break;
             }
             case 'openFile': {
                 const uri = vscode.Uri.file(msg.path);
-                vscode.window.showTextDocument(uri, { preview: false });
+                const opts: vscode.TextDocumentShowOptions = { preview: false };
+                if (typeof msg.line === 'number') {
+                    const pos = new vscode.Position(msg.line, 0);
+                    opts.selection = new vscode.Range(pos, pos);
+                }
+                vscode.window.showTextDocument(uri, opts);
                 break;
             }
             case 'toggleEdges': {
@@ -215,7 +260,7 @@ async function sendInitial(ws?: string) {
     lastCap = initialCap;
     const g: Graph = await subgraph(index, seeds, initialCap);
     if (!g.nodes.length) panel.webview.postMessage({ type: 'empty', reason: 'no-matched-files' });
-    else panel.webview.postMessage({ type: 'graph', graph: g });
+    else await publishGraph(index, g);
 }
 
 async function sendExpansion(ids: string[]) {
@@ -224,7 +269,7 @@ async function sendExpansion(ids: string[]) {
     const index = await idxPromise;
     if (!index) return;
     const g: Graph = await subgraph(index, ids, maxNodes);
-    panel?.webview.postMessage({ type: 'expandResult', graph: g });
+    await publishGraph(index, g, 'expandResult');
 }
 
 export function deactivate() { }

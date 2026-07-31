@@ -23,18 +23,34 @@ export async function getChangedFiles(): Promise<string[]> {
     } catch { return []; }
 }
 
-export function watchGitState(onChange: () => void) {
+export function watchGitState(onChange: () => void): vscode.Disposable {
     const gitExt = vscode.extensions.getExtension('vscode.git');
-    if (!gitExt) return () => { };
-    const add = async () => {
-        const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate()).getAPI(1);
-        const repo = api.repositories[0];
-        if (!repo) return () => { };
-        const d1 = repo.state.onDidChange(onChange);
-        const d2 = api.onDidOpenRepository(onChange);
-        const d3 = api.onDidChangeState(onChange);
-        return () => { d1.dispose(); d2.dispose(); d3.dispose(); };
-    };
-    add();
-    return () => { };
+    if (!gitExt) return new vscode.Disposable(() => { });
+
+    // P2-6: the Git API activates asynchronously, so collect the real disposers as
+    // they become available and expose a Disposable that actually tears them down
+    // (the previous implementation discarded them and returned a no-op).
+    const disposables: vscode.Disposable[] = [];
+    let disposed = false;
+
+    (async () => {
+        try {
+            const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate()).getAPI(1);
+            const subs: vscode.Disposable[] = [];
+            const repo = api.repositories[0];
+            if (repo) subs.push(repo.state.onDidChange(onChange));
+            subs.push(api.onDidOpenRepository(onChange));
+            subs.push(api.onDidChangeState(onChange));
+            if (disposed) subs.forEach(d => d.dispose());
+            else disposables.push(...subs);
+        } catch {
+            // Git extension unavailable/failed to activate — nothing to watch.
+        }
+    })();
+
+    return new vscode.Disposable(() => {
+        disposed = true;
+        disposables.forEach(d => d.dispose());
+        disposables.length = 0;
+    });
 }

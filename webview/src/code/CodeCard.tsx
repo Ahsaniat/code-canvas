@@ -1,4 +1,4 @@
-﻿import React, { useLayoutEffect, useMemo, useRef, useImperativeHandle } from 'react';
+﻿import React, { useMemo, useRef, useImperativeHandle } from 'react';
 import { highlight } from './highlight';
 
 export type CodeCardHandle = {
@@ -80,12 +80,10 @@ type Props = {
     lang: 'ts' | 'js' | 'py' | 'other';
     content: string;
     onTokenClick: (payload: { path: string; line: number; character: number; token: string }) => void;
-    onMeasured?: (size: { width: number; height: number }) => void;
     wrap?: boolean;
-    onLinePositions?: (positions: { line: number; top: number }[]) => void;
 };
 
-function CodeCardInner({ file, lang, content, onTokenClick, onMeasured, wrap, onLinePositions }: Props, ref: React.Ref<CodeCardHandle>) {
+function CodeCardInner({ file, lang, content, onTokenClick, wrap }: Props, ref: React.Ref<CodeCardHandle>) {
     const effectiveLang = useMemo<'ts' | 'js' | 'py' | 'other'>(() => {
         if (lang && lang !== 'other') return lang;
         const lower = (file || '').toLowerCase();
@@ -101,41 +99,10 @@ function CodeCardInner({ file, lang, content, onTokenClick, onMeasured, wrap, on
     const containerRef = useRef<HTMLDivElement | null>(null);
     const lastHighlightedRef = useRef<number | undefined>(undefined);
 
-    useLayoutEffect(() => {
-        const el = preRef.current;
-        if (!el) return;
-        const notify = () => onMeasured?.({ width: el.scrollWidth, height: el.scrollHeight });
-        notify();
-        const ro = new ResizeObserver(() => {
-            notify();
-            computeLinePositions();
-        });
-        ro.observe(el);
-        const cont = containerRef.current;
-        const onScroll = () => computeLinePositions();
-        cont?.addEventListener('scroll', onScroll, { passive: true } as any);
-        return () => { ro.disconnect(); cont?.removeEventListener('scroll', onScroll as any); };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [html, onMeasured]);
-
-    function computeLinePositions() {
-        try {
-            const pre = preRef.current;
-            const container = containerRef.current;
-            const root = container?.closest('.file-node') as HTMLElement | null;
-            if (!pre || !container || !root) return;
-            const rootRect = root.getBoundingClientRect();
-            const spans = Array.from(pre.querySelectorAll('span.code-line')) as HTMLElement[];
-            const positions = spans.map((sp, idx) => {
-                const spRect = sp.getBoundingClientRect();
-                const top = (spRect.top - rootRect.top) + spRect.height / 2;
-                return { line: idx, top };
-            });
-            onLinePositions?.(positions);
-        } catch { }
-    }
-
-    useLayoutEffect(() => { computeLinePositions(); }, [html]);
+    // Per-line geometry used to exist here to position one React Flow handle per
+    // import line. Edges are now routed as circuit traces from node rectangles
+    // (see edges/route.ts), so that measurement — a getBoundingClientRect per
+    // line on every resize and scroll — has been removed rather than left idle.
 
     useImperativeHandle(ref, () => ({
         highlight: (line: number) => {
@@ -187,7 +154,10 @@ function CodeCardInner({ file, lang, content, onTokenClick, onMeasured, wrap, on
     };
 
     return (
-        <div className="code-card" ref={containerRef}>
+        // `nowheel` is React Flow's opt-out: without it the canvas swallows the
+        // wheel event to zoom, so a card's overflow can never actually scroll and
+        // long files look truncated at the fold.
+        <div className="code-card nowheel" ref={containerRef}>
             <div className="file-title">{file}</div>
             <pre ref={preRef} id={`code-${file}`} className={`hljs${wrap ? ' wrap' : ''}`} onMouseUp={onClick} dangerouslySetInnerHTML={{ __html: html }} />
         </div>

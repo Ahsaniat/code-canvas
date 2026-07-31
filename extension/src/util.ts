@@ -7,10 +7,33 @@ export type GraphNode = {
     path?: string;
     lang?: 'ts' | 'js' | 'tsx' | 'jsx' | 'py' | 'other';
     type: 'file' | 'group';
-    parentNode?: string;
+    // React Flow v11.11 preferred field (was `parentNode`). See P2-4.
+    parentId?: string;
 };
 
-export type EdgeLink = { symbolName?: string; targetLine: number };
+/** How a binding crossed the module boundary. Drives the edge hover tooltip. */
+export type ImportKind =
+    | 'named'
+    | 'default'
+    | 'namespace'
+    | 'side-effect'
+    | 'reexport'
+    | 'dynamic'
+    | 'require'
+    | 'module';
+
+/**
+ * One imported/exported binding behind an import edge. `symbolName` is the name
+ * as exported by the TARGET module; `alias` is the local name in the SOURCE
+ * module when the two differ.
+ */
+export type EdgeLink = {
+    symbolName?: string;
+    alias?: string;
+    kind?: ImportKind;
+    sourceLine?: number;
+    targetLine: number;
+};
 
 export type GraphEdge = {
     id: string;
@@ -23,6 +46,9 @@ export type GraphEdge = {
 };
 
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] };
+
+/** Auto-generated (never user-authored) descriptions keyed by absolute path. */
+export type AutoDescriptions = Record<string, { autoDescription: string; kind: 'file' | 'folder' }>;
 
 /**
  * Load the built webview HTML and rewrite asset URLs for the VS Code webview.

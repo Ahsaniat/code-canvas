@@ -12,8 +12,10 @@ function tagColor(tag: string): string {
 }
 
 export function TagBar({ filePath }: Props) {
-  const { getFileMeta, addTag, removeTag } = useMetaStore();
-  const tags = getFileMeta(filePath).tags ?? [];
+  // P1-2: subscribe only to this file's tags + the two actions used here.
+  const addTag = useMetaStore((s) => s.addTag);
+  const removeTag = useMetaStore((s) => s.removeTag);
+  const tags = useMetaStore((s) => s.files[filePath]?.tags) ?? [];
   const [adding, setAdding] = useState(false);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);

@@ -37,8 +37,8 @@
                 "title": "Code Canvas: Open Changed Files"
             },
             {
-                "command": "codeCanvas.layout.custom",
-                "title": "Code Canvas: Layout – Custom"
+                "command": "codeCanvas.layout.radial",
+                "title": "Code Canvas: Layout – Radial (orphans in centre)"
             },
             {
                 "command": "codeCanvas.layout.dagre",
@@ -75,7 +75,7 @@
                 "key": "shift+plus"
             },
             {
-                "command": "codeCanvas.layout.custom",
+                "command": "codeCanvas.layout.radial",
                 "key": "shift+1"
             },
             {
@@ -100,8 +100,8 @@
             "properties": {
                 "codeCanvas.maxNodes": {
                     "type": "number",
-                    "default": 300,
-                    "description": "Maximum nodes to render per subgraph."
+                    "default": 1000,
+                    "description": "Maximum files to pull into a subgraph. Folders are collapsed by default, so this is a budget on indexing rather than on what is drawn."
                 },
                 "codeCanvas.excludeGlobs": {
                     "type": "array",
@@ -111,9 +111,26 @@
                     "default": [
                         "**/node_modules/**",
                         "**/.venv/**",
+                        "**/venv/**",
+                        "**/virtualenv/**",
+                        "**/site-packages/**",
                         "**/__pycache__/**",
+                        "**/.tox/**",
+                        "**/.mypy_cache/**",
+                        "**/.pytest_cache/**",
                         "**/dist/**",
                         "**/build/**",
+                        "**/out/**",
+                        "**/.next/**",
+                        "**/.nuxt/**",
+                        "**/.expo/**",
+                        "**/.svelte-kit/**",
+                        "**/coverage/**",
+                        "**/.cache/**",
+                        "**/vendor/**",
+                        "**/Pods/**",
+                        "**/.gradle/**",
+                        "**/logs/**",
                         "**/.git/**"
                     ],
                     "description": "Extra glob patterns to exclude from indexing."
@@ -125,8 +142,8 @@
                 },
                 "codeCanvas.initialCap": {
                     "type": "number",
-                    "default": 25,
-                    "description": "Initial maximum number of nodes to show when first rendering a graph."
+                    "default": 400,
+                    "description": "Files pulled in on first render. Since folders open collapsed, this can be generous — a small cap silently truncates whole parts of the tree."
                 }
             }
         }
@@ -137,14 +154,12 @@
         "watch": "tsup src/extension.ts --watch --format cjs --out-dir dist",
         "package": "vsce package --no-dependencies"
     },
-    "dependencies": {
-        "fast-glob": "^3.3.2",
-        "minimatch": "^9.0.5"
-    },
     "devDependencies": {
         "@types/node": "^24.2.1",
         "@types/vscode": "^1.102.0",
         "@vscode/vsce": "^3.6.0",
+        "fast-glob": "^3.3.2",
+        "minimatch": "^9.0.5",
         "tsup": "^8.5.0",
         "typescript": "^5.6"
     }

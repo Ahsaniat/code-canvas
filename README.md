@@ -1,14 +1,18 @@
-﻿# Code Canvas — Visual Code Graph for VS Code
+# Code Canvas — Visual Code Graph for VS Code
 
 ## Overview
-Code Canvas is a Visual Studio Code extension that turns your workspace into an interactive canvas of files and relationships. It scans your project for JavaScript/TypeScript and Python files, builds a file-level dependency graph (based on imports), and renders it in a webview using React Flow and ELK layout. Each file node shows an inline, syntax‑highlighted code preview and line‑anchored edges. Explore, focus, expand, and open files directly from the canvas.
+Code Canvas is a Visual Studio Code extension that turns your workspace into an interactive dependency graph. It indexes your JavaScript/TypeScript and Python files, resolves their imports, and renders the result as a canvas of folders and files connected by circuit-style wires.
 
-- Visualize file relationships (imports) for JS/TS and Python
-- Group files by folders; hierarchical groups auto-size to contain children
-- Inline code previews with syntax highlighting and line anchors
-- Expand from selected nodes; load more to increase graph size
-- Open changed files from Git; live updates on file save and Git state changes
-- Jump to definition and fetch references via VS Code LSP
+The canvas is **collapse-first**: folders open as compact chips carrying the aggregate of everything inside them, and you expand only the parts you care about. That is what keeps a ten-thousand-file repository readable — and fast.
+
+- **Folder-level graph** — a collapsed folder shows the union of its descendants' external imports, with in/out degree badges
+- **Expand on demand** — open a folder to reveal its files and subfolders; edges re-anchor to the specific file
+- **Radial layout** — connected nodes on concentric rings, unconnected files in the centre
+- **Circuit-style edges** — orthogonal wires that route *around* nodes, not through them
+- **Symbols on hover** — a wire tells you which functions, classes and types cross that boundary
+- **Automatic descriptions** — every file and folder is described from its doc comment, exports and imports; your own text always wins
+- **Inline code previews** — syntax-highlighted, scrollable, click a token to jump to its definition
+- **Git-aware** — open changed files, live refresh on save
 
 ## Status & Disclaimer
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
@@ -16,7 +20,7 @@ This project is provided as-is with many known and unknown bugs. I open-sourced 
 
 ## Requirements
 - Node.js 18+ (Vite 7 requires Node 18 or newer)
-- VS Code 1.90+ (as per extension engine)
+- VS Code 1.102+ (as per extension engine)
 - Git (optional but recommended; used to detect changed files)
 
 This repo uses npm workspaces with two packages:
@@ -72,36 +76,36 @@ Open the canvas:
 - Command Palette → “Code Canvas: Open”
 
 Toolbar (in the webview):
-- Relayout — recompute layout (ELK; falls back to a simple row layout if ELK fails)
-- Load 25 more — increase the node cap (+25)
-- Open Changed (⇧O) — add files detected as changed in Git
-- Reload — reload current graph from the index
+- Layout selector — Radial / ELK / Dagre / Force
+- Relayout — recompute the current layout
 - Expand (E) — grow the graph from the selected nodes
-- Refs (R) — toggle reference lookups when selecting tokens in code
-- Wrap/Unwrap — toggle code wrapping in previews
 - Hide/Show Edges — toggle edge visibility
-- Toggle Edges (Global) — request global edge visibility toggle from the extension
-- Seed Folder… — choose a folder to use as the seed set
-- Clear Focus — exit focus mode
+- Seed Folder… — build a view scoped to a specific folder
+- Load More — raise the node cap
+- Restore Hidden — bring back nodes removed with Delete
+- Refs (R) — toggle the references panel
+- Wrap/Unwrap — toggle code wrapping in previews
 
 Interaction tips:
-- Click a file node’s header to open it in the editor
-- Click an edge to highlight/scroll to the corresponding source/target lines
-- Select text inside a CodeCard to request references and jump to definition
-- Press E to expand from selection; Delete removes selected nodes/groups
-- Hold Space to pan; zoom in to reveal inline code (below a zoom threshold nodes render placeholders)
+- Click the chevron on a folder (or double-click it) to expand or collapse
+- Double-click a file header to open it in the editor
+- **Scroll inside a code card** with the wheel; the canvas zooms everywhere else
+- Hover an edge to see the symbols crossing that boundary
+- Click an edge to scroll both code cards to the import site
+- Click a token in code to jump to its definition and populate the references panel
+- Press E to expand from the selection; Delete hides nodes (restorable)
+- Zoom out far enough and code bodies become labels — a deliberate performance floor
 
 Seeds and growth:
-- Initial seeds are the active editor file plus up to 5 changed files
-- Use “Load 25 more” to incrementally reveal more of the graph (default max 300)
-- “Seed Folder…” lets you build a view scoped to a specific folder
-
+- The opening view is chosen automatically: folders expand just far enough to show a graph with actual edges
+- Your expansion state, hidden set and layout choice persist across reloads
+- "Seed Folder…" scopes the view to one folder
 
 ## Commands and Keybindings
 Contributed commands (Command Palette):
 - Code Canvas: Open (`codeCanvas.open`)
 - Code Canvas: Open Changed Files (`codeCanvas.openChanged`)
-- Code Canvas: Layout – Custom (`codeCanvas.layout.custom`)
+- Code Canvas: Layout – Radial (`codeCanvas.layout.radial`)
 - Code Canvas: Layout – Dagre (`codeCanvas.layout.dagre`)
 - Code Canvas: Layout – ELK (`codeCanvas.layout.elk`)
 - Code Canvas: Layout – Force (`codeCanvas.layout.force`)
@@ -112,31 +116,57 @@ Contributed commands (Command Palette):
 Default keybindings:
 - ⇧O — Open Changed Files
 - ⇧+ — Load 25 More
-- ⇧1 / ⇧2 / ⇧3 / ⇧4 — Layout: Custom / Dagre / ELK / Force
+- ⇧1 / ⇧2 / ⇧3 / ⇧4 — Layout: Radial / Dagre / ELK / Force
 - R — Toggle Refs
 
-Note: The current webview implementation lays out with ELK by default; layout selection commands are wired through but may not switch algorithms yet.
+All four algorithms are implemented and switch at runtime. Radial is the default.
 
 
 ## Settings
 User/workspace settings under `Code Canvas`:
-- `codeCanvas.maxNodes` (number, default: 300) — Maximum nodes to render per subgraph
-- `codeCanvas.excludeGlobs` (array<string>) — Extra glob patterns to exclude from indexing (defaults include `**/node_modules/**`, `**/dist/**`, etc.)
-- `codeCanvas.maxPreviewBytes` (number, default: 100000) — Max bytes per file to send to the webview code preview
-- `codeCanvas.initialCap` (number, default: 25) — Initial node cap when first rendering a graph
+- `codeCanvas.initialCap` (number, default: 400) — Files pulled in on first render. Folders open collapsed, so this can be generous; a small cap silently truncates whole parts of the tree.
+- `codeCanvas.maxNodes` (number, default: 1000) — Ceiling for expansion and "Load more"
+- `codeCanvas.maxPreviewBytes` (number, default: 100000) — Max bytes per file sent to the code preview
+- `codeCanvas.excludeGlobs` (array<string>) — Glob patterns excluded from indexing. Defaults cover `node_modules`, `venv`/`.venv`, `site-packages`, `__pycache__`, `dist`, `build`, `out`, `.next`, `.expo`, `coverage`, `.cache`, `vendor`, `Pods`, `logs` and more.
+
+  ⚠️ Setting this **replaces** the default list rather than adding to it.
 
 
 ## How it works (Architecture)
-- Indexing: The extension scans your workspace for JS/TS (`**/*.{js,jsx,ts,tsx}`) and Python (`**/*.py`) files using fast‑glob. It parses import statements and resolves relative dependencies (and Python modules within the workspace) to produce a file‑level graph.
-- Subgraphs and seeds: A BFS builds a connected subgraph from seeds (active editor + changed files), limited by a node cap. “Load 25 more” and “Expand” increase coverage.
-- Grouping: Files are grouped by folders into hierarchical group nodes; groups auto‑size to contain their children.
-- Layout: The webview uses ELK (layered) for layout. If ELK fails, it falls back to a simple horizontal layout. Edge endpoints are connected to line‑anchored handles when available.
-- Code previews: The webview highlights code with Highlight.js and preserves line structure so edges can anchor to exact lines. Selecting tokens requests references and opens definitions via VS Code’s built‑in LSP commands.
-- Git integration: When Git state changes, the extension can surface changed files for quick opening on the canvas.
 
+Full documentation lives in [`__doc__/`](__doc__/README.md). In brief:
+
+1. **Indexing** (extension host) — `fast-glob` finds JS/TS/Python files, regex scanners extract import specifiers *and their bindings*, and relative specifiers resolve to absolute paths. One read per file also captures exported symbols and the leading doc comment.
+2. **Subgraph** — a BFS from the seed files, then a top-up pass so disconnected parts of the workspace (a frontend that never imports the backend) still appear.
+3. **Model & projection** (webview) — the full tree is held as plain data. Only a *projection* of it reaches React Flow: each edge endpoint is mapped up to its nearest **visible** ancestor, so a collapsed folder carries the union of its descendants' external edges.
+4. **Layout** — one container-recursive pipeline, deepest-first, shared by all four engines. A group's size is final before its parent spaces it, so containers cannot overlap.
+5. **Routing** — orthogonal paths found by turn-aware A* over a Hanan grid built from node rectangles, computed off the render path and memoised by geometry hash.
+6. **Descriptions** — composed from doc comments, exports and resolved imports; stored separately from anything you write.
+
+| Document | Covers |
+| --- | --- |
+| [Architecture](__doc__/01-architecture.md) | Process model, message protocol, data flow |
+| [Indexing](__doc__/02-indexing.md) | Parsing, resolution, subgraph selection |
+| [Graph model](__doc__/03-graph-model.md) | Collapse-first projection |
+| [Layout](__doc__/04-layout.md) | Radial/ELK/Dagre/Force, non-overlap invariant |
+| [Edge routing](__doc__/05-edge-routing.md) | Hanan grid + A*, performance budgets |
+| [Descriptions](__doc__/06-descriptions.md) | Generation and the override rule |
+| [UI reference](__doc__/07-ui-reference.md) | Commands, settings, interactions |
+| [Performance](__doc__/08-performance.md) | The rules that keep it fast |
+| [Development](__doc__/09-development.md) | Build, package, debug, offline harnesses |
+
+### Supported languages
+
+JavaScript, TypeScript (including JSX/TSX) and Python. Nothing else is indexed.
+
+Only **relative** imports resolve — bare package specifiers are skipped by design, and TypeScript `paths` / bundler aliases (`@/components/…`) are **not** resolved yet.
 
 ## Troubleshooting
-- Nothing shows up: Make sure you opened a folder and have JS/TS or Python files that aren’t excluded by settings.
+- Changes don’t appear after installing: reload the VS Code window — `--install-extension` does not refresh an open one. Also make sure you ran `npm run build` at the root, since `vscode:prepublish` builds only the extension, not the webview.
+- Nothing shows up: make sure you opened a folder and have JS/TS or Python files that aren’t excluded by settings.
+- Whole folders missing: raise `codeCanvas.initialCap`, or check `excludeGlobs` isn’t too broad.
+- Very few edges: your imports probably go through TS `paths` or bundler aliases, which aren’t resolved yet.
+- Code cards won’t scroll: the wheel scrolls a card and zooms the canvas — make sure the pointer is over the code.
 - Webview doesn’t update: If using watch mode, prefer `npx vite build --watch` instead of `vite dev` to feed `extension/media/` where the extension loads assets.
 - Node version errors: Ensure Node 18+.
 - Changed files missing: Verify the Git extension is enabled; otherwise the extension falls back to parsing `git status` output.
@@ -171,7 +201,7 @@ Extension `package.json`:
     "vscode:prepublish": "npm run build",
     "build": "tsup src/extension.ts --format cjs --dts --out-dir dist --external vscode",
     "watch": "tsup src/extension.ts --watch --format cjs --out-dir dist",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies"
   }
 }
 ```
@@ -180,10 +210,11 @@ Tip: For a webview build watch, run `npx vite build --watch` inside `webview/`.
 
 
 ## Roadmap / Ideas
-- Multiple layout strategies switchable at runtime (ELK, Dagre, Force)
-- Additional language parsers and richer edge types (calls/refs)
-- Persisted layouts and named canvases
-- Export/import views and screenshots
+- Additional language parsers (Go, Rust, Java, C#)
+- Resolve TypeScript `paths` and bundler aliases
+- Migrate to React Flow v12 (`@xyflow/react`) and adopt `NodeResizer`
+- Model-generated descriptions as an opt-in alternative to the heuristics
+- Named, saveable canvases and screenshot export
 
 
 ## License

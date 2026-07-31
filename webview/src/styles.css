@@ -1,7 +1,27 @@
-﻿:root {
+/* ==========================================================================
+   Code Canvas — thin white "wire" aesthetic.
+
+   There is no indigo/violet accent anywhere: selection, linking and edge
+   emphasis are all expressed as a 1px white hairline plus a soft white glow.
+   Nothing draws a thick coloured ring, and no state tints a node's fill.
+   ========================================================================== */
+
+:root {
     color-scheme: dark;
     --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
     --zoom-duration: 320ms;
+
+    /* The single accent: white at varying strength. */
+    --wire: rgba(255, 255, 255, 0.55);
+    --wire-strong: rgba(255, 255, 255, 0.92);
+    --wire-hairline: rgba(255, 255, 255, 0.85);
+    --wire-faint: rgba(255, 255, 255, 0.12);
+    --wire-glow: rgba(255, 255, 255, 0.28);
+
+    --surface: #0d1117;
+    --surface-raised: #0b1220;
+    --label-min-size: 13px;
+    --label-max-size: 18px;
 }
 
 body,
@@ -25,9 +45,11 @@ html,
     z-index: 10;
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
 }
 
-.toolbar button {
+.toolbar button,
+.toolbar select {
     background: #111827;
     border: 1px solid #1f2937;
     color: #e5e7eb;
@@ -36,29 +58,67 @@ html,
     cursor: pointer;
 }
 
+.toolbar button:hover,
+.toolbar select:hover {
+    border-color: var(--wire-hairline);
+}
+
+/* ── File node ─────────────────────────────────────────────────────────── */
+
 .file-node {
     width: 100%;
     height: 100%;
-    background: #0d1117;
-    border: 1px solid #1f2937;
+    /* A column so the code area can claim whatever height the header,
+       description panel and tag bar leave over. Hardcoding the code height as
+       "100% minus the header" ignored the other two — both of which vary per
+       file — so the card overflowed the node and `overflow: hidden` clipped its
+       bottom, making long files unscrollable to the end by a different amount
+       each time. */
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--wire-faint);
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 0 0 1px #0b1220 inset;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    position: relative;
+    container-type: inline-size;
 }
 
 .file-node-header {
-    background: #0b1220;
+    background: var(--surface-raised);
     padding: 6px 10px;
     font-weight: 600;
     font-size: 12px;
     letter-spacing: .3px;
-    border-bottom: 1px solid #1f2937;
+    border-bottom: 1px solid var(--wire-faint);
     cursor: grab;
+    z-index: 2;
+    position: relative;
 }
 
 .code-card {
-    height: calc(100% - 30px);
+    /* Take the leftover column space rather than guessing at it. `min-height: 0`
+       is required: without it a flex item refuses to shrink below its content
+       height, and `overflow: auto` would never produce a scrollbar.
+       Size containment is deliberately NOT used here — it makes the element
+       report a fixed intrinsic height, which is exactly what flex needs to
+       measure honestly. */
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
+    contain: layout paint;
+    z-index: 1;
+    position: relative;
+}
+
+/* Header, description and tags keep their natural height; only the code flexes. */
+.file-node > .file-node-header,
+.file-node > .description-panel,
+.file-node > .tag-bar {
+    flex: 0 0 auto;
 }
 
 .code-card .file-title {
@@ -106,66 +166,12 @@ pre.hljs.wrap {
     padding: 8px;
 }
 
-/* Improve MiniMap visibility */
-.react-flow__minimap {
-    background: #0f1115 !important;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
-}
-
-.react-flow__minimap-mask {
-    fill: rgba(255, 255, 255, 0.06) !important;
-}
-
-.react-flow__minimap-node {
-    fill: #4f46e5 !important;
-    stroke: rgba(255, 255, 255, 0.2) !important;
-}
-
-/* hide folder/group nodes from minimap to reduce clutter */
-.react-flow__minimap-node.group {
-    display: none !important;
-}
-
-/* Allow extreme zooming */
-.react-flow__renderer,
-.react-flow__viewport {
-    will-change: transform;
-}
-
-/* Smooth node transitions for layout/elevation changes */
-.react-flow__node {
-    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease;
-    will-change: transform;
-}
-
-/* Disable transition while dragging to keep the interaction snappy */
-.react-flow__node.no-animate {
-    transition: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .react-flow__node {
-        transition: none !important;
-    }
-}
-
-/* Smooth transform transitions for the React Flow viewport (zoom smoothing) */
-.react-flow__viewport {
-    transition: none;
-}
-
-.react-flow__viewport.zoom-smooth {
-    transition: transform var(--zoom-duration) var(--ease-smooth);
-}
-
-/* Disable smoothing during pans/drags for snappy feel */
-.react-flow__viewport.no-animate {
-    transition: none !important;
-}
-
 /* Placeholder body shown when code is hidden for performance */
 .node-placeholder-body {
-    height: calc(100% - 30px);
+    /* Same leftover-space rule as .code-card — it replaces the code area when
+       zoomed out, so it must not assume the header is the only thing above it. */
+    flex: 1 1 auto;
+    min-height: 0;
     display: grid;
     place-items: center;
     align-content: center;
@@ -182,92 +188,161 @@ pre.hljs.wrap {
     letter-spacing: 0.2px;
 }
 
-/* Defer offscreen work for heavy node content */
-.code-card {
-    /* disable content-visibility for nested group rendering to ensure code is painted */
-    content-visibility: visible;
-    contain-intrinsic-size: 480px 280px;
-    contain: layout paint size;
+.node-placeholder-body::before {
+    content: attr(data-label);
+    display: block;
+    font-weight: 800;
+    font-size: clamp(22px, calc(440px / var(--rf-zoom, 1)), 72px);
+    color: #cdd6f4;
+    opacity: 0.9;
+    margin-bottom: 8px;
+    text-wrap: balance;
+    text-align: center;
 }
 
-/* Promote nodes to their own layer to reduce flicker during viewport moves */
-.file-node {
-    backface-visibility: hidden;
-    transform: translateZ(0);
-    position: relative;
-    /* enable proper z-index layering for overlays */
+@container node-size (min-width: 600px) {
+    .node-placeholder-body::before {
+        font-size: clamp(28px, calc(660px / var(--rf-zoom, 1)), 92px);
+    }
 }
 
-/* keep code content below overlays */
-.code-card {
-    z-index: 1;
-    position: relative;
-}
+/* ── Collapsed folder node ─────────────────────────────────────────────── */
 
-.file-node-header {
-    z-index: 2;
-    position: relative;
-}
-
-.group-label {
-    z-index: 1001;
-    position: absolute;
-    pointer-events: none;
-}
-
-/* Hover label should sit on top of everything inside the node */
-.label-constant {
-    z-index: 1002;
-}
-
-/* Show constant label also when selected */
-.react-flow__node.selected .label-constant {
-    opacity: 1;
-}
-
-/* Group node styles */
-.react-flow__node-group {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+.folder-node {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+    border: 1px solid var(--wire-faint);
     border-radius: 12px;
-    padding-top: 30px;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.folder-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--wire-faint);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.folder-node-name {
+    font-weight: 700;
+    letter-spacing: .2px;
+    color: #e5e7eb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder-node-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    min-height: 0;
+}
+
+.folder-node-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.folder-badge {
+    font-size: clamp(10px, calc(12px / var(--rf-zoom, 1)), 16px);
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--wire-faint);
+    color: #cbd5e1;
+    white-space: nowrap;
+}
+
+.folder-badge--in {
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+.folder-badge--out {
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #e2e8f0;
+}
+
+.folder-node-description {
+    /* One line: the node shows the first sentence only, and a folder card is a
+       label, not a document. Detail belongs in the description panel. */
+    font-size: clamp(11px, calc(13px / var(--rf-zoom, 1)), 18px);
+    line-height: 1.4;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.folder-node-description.is-auto {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.folder-chevron {
+    background: transparent;
+    border: 1px solid var(--wire-faint);
+    border-radius: 6px;
+    color: #e5e7eb;
+    width: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
+    height: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
+    font-size: clamp(11px, calc(14px / var(--rf-zoom, 1)), 20px);
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.folder-chevron:hover {
+    border-color: var(--wire-hairline);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.folder-chevron--empty {
+    visibility: hidden;
+}
+
+/* ── Group (expanded folder) container ─────────────────────────────────── */
+
+/* Single definition: the previous stylesheet declared this block three times
+   with conflicting values, which made the reserved header band ambiguous. */
+.react-flow__node-group {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--wire-faint);
+    border-radius: 14px;
     min-width: 200px;
     min-height: 150px;
     cursor: grab;
-    /* don't block inner node interactions */
     pointer-events: auto;
-}
-
-/* file nodes should render above groups */
-.react-flow__node-file {
-    z-index: 2;
+    /* NO padding here. Child nodes are siblings in the DOM positioned by
+       transform, so padding would not indent them — it would only push
+       `.group-node` (and with it the absolutely-positioned label) out of
+       place. The header band is reserved by GROUP_HEADER in layout.ts. */
+    padding: 0;
+    box-sizing: border-box;
 }
 
 .react-flow__node-group:hover {
     border-color: rgba(255, 255, 255, 0.3);
 }
 
-.group-label {
-    position: absolute;
-    top: 5px;
-    left: 15px;
-    font-size: 12px;
-    color: #aaa;
-    font-weight: 600;
+/* file nodes should render above groups */
+.react-flow__node-file,
+.react-flow__node-folder {
+    z-index: 2;
 }
 
-/* zoom-aware label sizing and persistence */
-:root {
-    --label-min-size: 13px;
-    --label-max-size: 18px;
-}
-
-.label-fixed {
-    font-size: clamp(var(--label-min-size), calc(12px / var(--rf-zoom, 1)), var(--label-max-size));
-    line-height: 1.2;
-}
-
-/* Group container and selection highlight */
 .group-node {
     width: 100%;
     height: 100%;
@@ -278,81 +353,149 @@ pre.hljs.wrap {
     content: '';
     position: absolute;
     inset: 0;
-    border: 3px solid rgba(99, 102, 241, 0.75);
-    border-radius: 12px;
+    border: 1px solid var(--wire-hairline);
+    border-radius: 14px;
     pointer-events: none;
+    box-shadow: 0 0 12px var(--wire-glow);
 }
 
-/* Existing group visuals */
-.react-flow__node-group {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding-top: 30px;
-    min-width: 200px;
-    min-height: 150px;
-    cursor: grab;
-    pointer-events: auto;
+.group-label {
+    position: absolute;
+    top: 10px;
+    left: 14px;
+    right: 14px;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #cbd5e1;
+    font-weight: 600;
 }
 
-/* File header stays visible and scales */
+.group-label-name {
+    font-weight: 700;
+    color: #e5e7eb;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Zoom-aware labels ─────────────────────────────────────────────────── */
+
+.label-fixed {
+    font-size: clamp(var(--label-min-size), calc(12px / var(--rf-zoom, 1)), var(--label-max-size));
+    line-height: 1.2;
+}
+
 .file-node-header.label-fixed {
     position: sticky;
     top: 0;
-    background: #0b1220;
+    background: var(--surface-raised);
     z-index: 2;
+    font-size: clamp(16px, calc(24px / var(--rf-zoom, 1)), 28px);
 }
 
-/* Large header placeholder when code is hidden */
-.node-placeholder-body::before {
-    content: attr(data-label);
-    display: block;
-    font-weight: 800;
-    font-size: clamp(22px, calc(440px / var(--rf-zoom, 1)), 72px);
-    /* scale with node width via container queries below */
-    color: #cdd6f4;
-    opacity: 0.9;
-    margin-bottom: 8px;
-    text-wrap: balance;
-    text-align: center;
+.group-label.label-fixed,
+.folder-node-header.label-fixed {
+    font-size: clamp(16px, calc(22px / var(--rf-zoom, 1)), 26px);
 }
 
-/* Grow placeholder header to fit node width */
-@container node-size (min-width: 600px) {
-    .node-placeholder-body::before {
-        font-size: clamp(28px, calc(660px / var(--rf-zoom, 1)), 92px);
+/* ── Minimap ───────────────────────────────────────────────────────────── */
+
+.react-flow__minimap {
+    background: #0f1115 !important;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.react-flow__minimap-mask {
+    fill: rgba(255, 255, 255, 0.06) !important;
+}
+
+.react-flow__minimap-node {
+    fill: rgba(255, 255, 255, 0.35) !important;
+    stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+.react-flow__minimap-node.group {
+    display: none !important;
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+
+.react-flow__renderer,
+.react-flow__viewport {
+    will-change: transform;
+}
+
+.react-flow__node {
+    transition: transform 220ms var(--ease-smooth), opacity 160ms ease;
+    will-change: transform;
+}
+
+.react-flow__node.no-animate {
+    transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .react-flow__node {
+        transition: none !important;
     }
 }
 
-/* Establish container context on file-node */
-.file-node {
-    container-type: inline-size;
+.react-flow__viewport {
+    transition: none;
 }
 
-/* Stronger focus for accessibility */
+.react-flow__viewport.zoom-smooth {
+    transition: transform var(--zoom-duration) var(--ease-smooth);
+}
+
+.react-flow__viewport.no-animate {
+    transition: none !important;
+}
+
+/* ── Node hover / selection: hairline white, never a coloured tint ─────── */
+
 .react-flow__node:focus-within .file-node-header,
 .react-flow__node:focus-within .group-label {
-    outline: 2px solid #93c5fd;
+    outline: 1px solid var(--wire-hairline);
     outline-offset: 2px;
 }
 
-/* Hover/active emphasis for nodes */
 .react-flow__node:hover .file-node-header,
-.react-flow__node:hover .group-label {
-    color: #e5e7eb;
-}
-
-.react-flow__node:where(.selected),
-.react-flow__node:is(.selected) {
-    filter: drop-shadow(0 0 0.4rem rgba(99, 102, 241, 0.45));
+.react-flow__node:hover .group-label,
+.react-flow__node:hover .folder-node-header {
+    color: #ffffff;
 }
 
 .react-flow__node:hover .file-node,
-.react-flow__node:hover.react-flow__node-group {
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25) inset;
+.react-flow__node:hover .folder-node {
+    border-color: rgba(255, 255, 255, 0.45);
 }
 
-/* Larger label when hovered or selected for legibility */
+.react-flow__node:hover.react-flow__node-group {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+.react-flow__node.selected,
+.react-flow__node.node-linked {
+    filter: drop-shadow(0 0 0.35rem var(--wire-glow));
+}
+
+.react-flow__node.selected .file-node,
+.react-flow__node.selected .folder-node,
+.react-flow__node.node-linked .file-node,
+.react-flow__node.node-linked .folder-node {
+    border-color: var(--wire-hairline);
+    box-shadow: 0 0 0 1px var(--wire-hairline) inset;
+}
+
+.react-flow__node.selected.react-flow__node-group {
+    border-color: var(--wire-hairline);
+    background: rgba(255, 255, 255, 0.04);
+}
+
 .react-flow__node:hover .label-fixed,
 .react-flow__node.selected .label-fixed {
     font-weight: 800;
@@ -360,318 +503,479 @@ pre.hljs.wrap {
     text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
-/* Zoom-aware larger sizes for headers (override base) */
-.file-node-header.label-fixed {
-    font-size: clamp(16px, calc(24px / var(--rf-zoom, 1)), 28px);
-}
-
-.group-label.label-fixed {
-    font-size: clamp(16px, calc(22px / var(--rf-zoom, 1)), 26px);
-}
-
-/* Dramatic hover/selected for headers */
 .react-flow__node:hover .file-node-header.label-fixed,
-.react-flow__node.selected .file-node-header.label-fixed {
+.react-flow__node.selected .file-node-header.label-fixed,
+.react-flow__node.node-linked .file-node-header.label-fixed {
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     color: #fafafa;
     background: linear-gradient(180deg, #111a2b, #0b1220);
 }
 
 .react-flow__node:hover .group-label.label-fixed,
-.react-flow__node.selected .group-label.label-fixed {
+.react-flow__node.selected .group-label.label-fixed,
+.react-flow__node.node-linked .group-label.label-fixed {
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-    color: #e5e7eb;
+    color: #ffffff;
 }
 
-/* Stronger selected visuals on containers */
-.react-flow__node.selected .file-node {
-    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.9) inset, 0 0 24px rgba(167, 139, 250, 0.45);
+/* ── Edges: thin white wires ───────────────────────────────────────────── */
+
+.react-flow__edge .react-flow__edge-path {
+    stroke: var(--wire);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
 }
 
-.react-flow__node.selected.react-flow__node-group {
-    border-color: rgba(167, 139, 250, 0.9) !important;
-    background: rgba(167, 139, 250, 0.08);
+.react-flow__edge:hover .react-flow__edge-path {
+    stroke: var(--wire-strong) !important;
+    stroke-width: calc(2px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 3px var(--wire-glow));
 }
 
-/* Constant-size hover label that ignores viewport zoom */
-.label-constant {
+.react-flow__edge.selected .react-flow__edge-path {
+    stroke: var(--wire-strong) !important;
+    stroke-width: calc(2px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 4px var(--wire-glow));
+}
+
+.react-flow__edge.edge-linked .react-flow__edge-path {
+    stroke: var(--wire-hairline) !important;
+    stroke-width: calc(1.8px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 4px var(--wire-glow));
+}
+
+.react-flow__arrowhead polyline,
+.react-flow__arrowhead path {
+    stroke: var(--wire-hairline);
+    fill: var(--wire-hairline);
+}
+
+/* ── Floating overlays (hover label + edge tooltip) ────────────────────── */
+
+.canvas-overlay {
     position: fixed;
-    inset: auto auto auto auto;
-    padding: 6px 10px;
-    font-size: 14px;
-    line-height: 1.2;
-    font-weight: 800;
-    background: rgba(2, 6, 23, 0.85);
-    border: 1px solid rgba(99, 102, 241, 0.6);
+    max-width: 460px;
+    padding: 8px 10px;
+    background: rgba(2, 6, 23, 0.94);
+    border: 1px solid var(--wire-hairline);
     border-radius: 8px;
     color: #e5e7eb;
     pointer-events: none;
-    opacity: 1;
     transform: translateZ(0);
-    transition: opacity 120ms var(--ease-smooth), transform 120ms var(--ease-smooth);
     z-index: 2147483646;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 
-/* Show on hover or focus */
-.react-flow__node:hover .label-constant,
-.react-flow__node:focus-within .label-constant {
-    opacity: 1;
-    transform: translateY(-2px);
-    z-index: 3;
+.label-constant {
+    font-size: 14px;
+    line-height: 1.2;
+    font-weight: 800;
+    z-index: 2147483647;
 }
 
-/* Increase top padding for groups much more to avoid overlap with inner nodes */
-.react-flow__node-group {
-    padding-top: 60px;
+.canvas-overlay-title {
+    font-weight: 800;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* Keep group label elevated above children */
-.group-label {
-    top: 14px;
-    left: 18px;
+.canvas-overlay-detail {
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 400;
+    color: #94a3b8;
+    white-space: normal;
 }
 
-/* Remove in-node label-constant visibility reliance; global overlay handles hover */
-.react-flow__node .label-constant {
-    display: none;
+.edge-tooltip-arrow {
+    color: var(--wire-hairline);
 }
 
-/* Edge visibility and selection emphasis */
-.react-flow__edge .react-flow__edge-path {
-    stroke-linecap: round;
-    stroke-linejoin: round;
+.edge-tooltip-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
-/* Hover emphasis on edges for quicker targeting */
-.react-flow__edge:hover .react-flow__edge-path {
-    stroke-width: 3 !important;
+.edge-tooltip-list li {
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    line-height: 1.35;
+    border-left: 1px solid var(--wire-faint);
+    padding-left: 8px;
 }
 
-/* Selected edge: thicker line, brighter color, subtle glow */
-.react-flow__edge.selected .react-flow__edge-path {
-    stroke: #a78bfa !important;
-    stroke-width: 5 !important;
-    filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.65)) drop-shadow(0 0 2px rgba(167, 139, 250, 0.8));
+.edge-tooltip-pair {
+    color: #cbd5e1;
 }
 
-/* Improve visibility when a connected node is hovered/selected (ReactFlow applies .selected on nodes) */
-.react-flow__node:hover~.react-flow__edges path,
-.react-flow__node.selected~.react-flow__edges path {
-    stroke-linecap: round;
+.edge-tooltip-symbols {
+    color: #ffffff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px;
+    word-break: break-word;
 }
 
-/* Accessibility: stronger emphasis when user requests more contrast */
+.edge-tooltip-symbols--empty {
+    color: #64748b;
+    font-style: italic;
+    font-family: inherit;
+}
+
+.edge-tooltip-more {
+    margin-top: 6px;
+    font-size: 10px;
+    color: #94a3b8;
+}
+
+/* ── Accessibility ─────────────────────────────────────────────────────── */
+
 @media (prefers-contrast: more) {
-    .react-flow__edge.selected .react-flow__edge-path {
-        stroke-width: 7 !important;
+
+    .react-flow__edge.selected .react-flow__edge-path,
+    .react-flow__edge.edge-linked .react-flow__edge-path {
+        stroke: #ffffff !important;
+        stroke-width: calc(3px * max(1, 1 / var(--rf-zoom, 1))) !important;
     }
 
-    .react-flow__node.selected .file-node {
-        box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.95) inset, 0 0 28px rgba(167, 139, 250, 0.55);
+    .react-flow__node.selected .file-node,
+    .react-flow__node.selected .folder-node {
+        box-shadow: 0 0 0 2px #ffffff inset;
     }
 }
 
-/* Windows High Contrast mode support */
 @media (forced-colors: active) {
+
     .react-flow__edge.selected .react-flow__edge-path {
         forced-color-adjust: none;
         stroke: Highlight !important;
     }
 
-    .react-flow__node.selected .file-node {
+    .react-flow__node.selected .file-node,
+    .react-flow__node.selected .folder-node,
+    .react-flow__node.node-linked .file-node,
+    .react-flow__node.node-linked .folder-node {
         forced-color-adjust: none;
-        outline: 3px solid Highlight;
-        outline-offset: 2px;
-    }
-}
-
-/* Linked node emphasis (selected or connected to selected) */
-.react-flow__node.node-linked .file-node,
-.react-flow__node.selected .file-node {
-    box-shadow: 0 0 0 calc(3px * max(1, 1 / var(--rf-zoom, 1))) rgba(167, 139, 250, 0.9) inset,
-        0 0 calc(24px * max(1, 1 / var(--rf-zoom, 1))) rgba(167, 139, 250, 0.45);
-}
-
-/* Also boost label contrast for linked nodes */
-.react-flow__node.node-linked .file-node-header.label-fixed,
-.react-flow__node.node-linked .group-label.label-fixed {
-    color: #fafafa;
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-}
-
-/* Zoom-compensated edge thickness for linked edges */
-.react-flow__edge.edge-linked .react-flow__edge-path {
-    stroke-width: calc(4px * max(1, 1 / var(--rf-zoom, 1))) !important;
-    filter: drop-shadow(0 0 calc(6px * max(1, 1 / var(--rf-zoom, 1))) rgba(167, 139, 250, 0.6));
-}
-
-/* When very zoomed out, force a minimum thickness so edges stay visible */
-@supports (selector(:has(*))) {
-    /* No-op feature query placeholder to ensure older browsers ignore if needed */
-}
-
-/* Fallback for environments not honoring CSS var or calc: keep a decent width */
-.react-flow__edge.edge-linked .react-flow__edge-path {
-    stroke-linecap: round;
-}
-
-@media (forced-colors: active) {
-    .react-flow__node.node-linked .file-node {
-        outline: 3px solid Highlight;
+        outline: 2px solid Highlight;
         outline-offset: 2px;
     }
 }
 
 /* ── Collapse button ── */
 .code-card-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
+
 .code-card-collapse-btn {
-  margin-left: auto;
-  background: transparent;
-  border: 1px solid var(--vscode-editorWidget-border, #555);
-  color: var(--vscode-foreground);
-  border-radius: 3px;
-  width: 18px;
-  height: 18px;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  flex-shrink: 0;
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--wire-faint);
+    color: var(--vscode-foreground, #e5e7eb);
+    border-radius: 4px;
+    width: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
+    height: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
+
 .code-card-collapse-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--wire-hairline);
 }
 
 /* ── Description panel ── */
 .description-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  color: var(--vscode-descriptionForeground);
-  user-select: none;
-  border-top: 1px solid var(--vscode-editorWidget-border, #333);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    font-size: clamp(14px, calc(18px / var(--rf-zoom, 1)), 24px);
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #94a3b8);
+    user-select: none;
+    border-top: 1px solid var(--wire-faint);
 }
-.description-toggle:hover { background: var(--vscode-list-hoverBackground); }
-.description-toggle-arrow { font-size: 9px; }
-.description-body { padding: 6px 8px; }
+
+.description-toggle:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.description-toggle-arrow {
+    font-size: clamp(10px, calc(14px / var(--rf-zoom, 1)), 20px);
+}
+
+.description-auto-badge {
+    margin-left: auto;
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--wire-faint);
+    color: #94a3b8;
+}
+
+.description-body {
+    padding: 12px;
+}
+
 .description-text {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  cursor: text;
-  white-space: pre-wrap;
-  color: var(--vscode-foreground);
+    margin: 0;
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    line-height: 1.5;
+    cursor: text;
+    white-space: pre-wrap;
+    color: var(--vscode-foreground, #e5e7eb);
 }
-.description-placeholder { color: var(--vscode-descriptionForeground); font-style: italic; }
+
+.description-text.description-auto {
+    font-style: italic;
+    color: #a8b3c4;
+}
+
+.description-placeholder {
+    color: var(--vscode-descriptionForeground, #94a3b8);
+    font-style: italic;
+}
+
 .description-textarea {
-  width: 100%;
-  min-height: 64px;
-  resize: vertical;
-  font-size: 12px;
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-focusBorder);
-  border-radius: 3px;
-  padding: 4px;
-  box-sizing: border-box;
-  font-family: var(--vscode-font-family);
+    width: 100%;
+    min-height: calc(80px / var(--rf-zoom, 1));
+    resize: vertical;
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    background: var(--vscode-input-background, #0b1220);
+    color: var(--vscode-input-foreground, #e5e7eb);
+    border: 1px solid var(--wire-hairline);
+    border-radius: 3px;
+    padding: 8px;
+    box-sizing: border-box;
+    font-family: var(--vscode-font-family, inherit);
+}
+
+/* ── Node Collapsed State ── */
+.code-card--collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+    padding-bottom: 8px;
 }
 
 /* ── Tag bar ── */
 .tag-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px 8px;
-  border-top: 1px solid var(--vscode-editorWidget-border, #333);
-  min-height: 28px;
-  align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 8px;
+    border-top: 1px solid var(--wire-faint);
+    min-height: 28px;
+    align-items: center;
 }
+
 .tag-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-size: 10px;
-  color: #fff;
-  white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    color: #fff;
+    white-space: nowrap;
 }
+
 .tag-chip-remove {
-  background: transparent;
-  border: none;
-  color: rgba(255,255,255,0.7);
-  cursor: pointer;
-  padding: 0;
-  font-size: 12px;
-  line-height: 1;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
 }
-.tag-chip-remove:hover { color: #fff; }
+
+.tag-chip-remove:hover {
+    color: #fff;
+}
+
 .tag-add-btn {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  border: 1px dashed var(--vscode-descriptionForeground);
-  background: transparent;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px dashed var(--vscode-descriptionForeground, #64748b);
+    background: transparent;
+    color: var(--vscode-descriptionForeground, #94a3b8);
+    cursor: pointer;
 }
-.tag-add-btn:hover { border-color: var(--vscode-focusBorder); }
+
+.tag-add-btn:hover {
+    border-color: var(--wire-hairline);
+}
+
 .tag-input {
-  width: 80px;
-  font-size: 10px;
-  padding: 1px 4px;
-  border-radius: 10px;
-  border: 1px solid var(--vscode-focusBorder);
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  outline: none;
+    width: 80px;
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 10px;
+    border: 1px solid var(--wire-hairline);
+    background: var(--vscode-input-background, #0b1220);
+    color: var(--vscode-input-foreground, #e5e7eb);
+    outline: none;
 }
 
 /* ── Tag filter toolbar ── */
 .tag-filter-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
 }
-.tag-filter-label { font-size: 11px; color: var(--vscode-descriptionForeground); }
+
+.tag-filter-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #94a3b8);
+}
+
 .tag-filter-pill {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid var(--vscode-editorWidget-border);
-  background: transparent;
-  color: var(--vscode-foreground);
-  cursor: pointer;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--wire-faint);
+    background: transparent;
+    color: var(--vscode-foreground, #e5e7eb);
+    cursor: pointer;
 }
+
 .tag-filter-pill--active {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border-color: var(--vscode-button-background);
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    border-color: var(--wire-hairline);
 }
+
 .tag-filter-mode {
-  font-size: 10px;
-  font-weight: bold;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-focusBorder);
-  background: transparent;
-  color: var(--vscode-focusBorder);
-  cursor: pointer;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--wire-hairline);
+    background: transparent;
+    color: #e5e7eb;
+    cursor: pointer;
 }
+
 .tag-filter-clear {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-errorForeground);
-  background: transparent;
-  color: var(--vscode-errorForeground);
-  cursor: pointer;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-errorForeground, #f87171);
+    background: transparent;
+    color: var(--vscode-errorForeground, #f87171);
+    cursor: pointer;
+}
+
+/* ── References panel (P1-5) ── */
+.refs-panel {
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    width: 280px;
+    max-height: 40vh;
+    display: flex;
+    flex-direction: column;
+    background: rgba(2, 6, 23, 0.92);
+    border: 1px solid var(--wire-hairline);
+    border-radius: 8px;
+    z-index: 2147483646;
+    overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+.refs-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #e5e7eb;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.refs-panel-header button {
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.refs-panel-header button:hover {
+    color: #fff;
+}
+
+.refs-panel-list {
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.refs-panel-empty {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #94a3b8);
+}
+
+.refs-panel-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #cdd6f4;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.refs-panel-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* One-line description shown while the panel is collapsed. Clipped to a single
+   row so a long first sentence can never grow the node. */
+.description-summary {
+    margin: 0;
+    padding: 2px 10px 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--vscode-descriptionForeground, #94a3b8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.description-summary.description-auto {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.description-more {
+    opacity: 0.6;
 }

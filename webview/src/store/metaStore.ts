@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FileMeta, MetaFile } from '../types/meta';
+import { AutoDescriptions, FileMeta, MetaFile } from '../types/meta';
 
 // Utility: acquire the VS Code API (already available in the webview)
 const vscode = (window as any).vscode || ((window as any).acquireVsCodeApi ? (window as any).acquireVsCodeApi() : undefined);
@@ -17,6 +17,7 @@ interface MetaStore {
   tagFilterMode: 'OR' | 'AND';
 
   hydrate: (meta: MetaFile) => void;
+  applyAutoDescriptions: (entries: AutoDescriptions) => void;
   getFileMeta: (filePath: string) => FileMeta;
 
   setDescription: (filePath: string, description: string) => void;
@@ -37,6 +38,25 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
   tagFilterMode: 'OR',
 
   hydrate: (meta) => set({ files: meta.files ?? {} }),
+
+  /**
+   * Merge generated descriptions in.
+   *
+   * `description` (the manual one) is deliberately absent from the patch, so a
+   * regeneration can never clobber what the user wrote. Entries whose text is
+   * unchanged are skipped so this does not invalidate node subscriptions.
+   */
+  applyAutoDescriptions: (entries) => set((state) => {
+    let changed = false;
+    const files = { ...state.files };
+    for (const [key, value] of Object.entries(entries ?? {})) {
+      const current = files[key];
+      if (current?.autoDescription === value.autoDescription) continue;
+      files[key] = { ...(current ?? {}), autoDescription: value.autoDescription, autoDescriptionKind: value.kind };
+      changed = true;
+    }
+    return changed ? { files } : {};
+  }),
 
   getFileMeta: (filePath) => get().files[filePath] ?? {},
 
