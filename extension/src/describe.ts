@@ -208,7 +208,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
     return `${n} ${n === 1 ? one : many}`;
 }
 
-/** One resolved import edge out of a file, as it should read to a human. */
+/** One resolved import edge out of a file */
 export interface FileImportDetail {
     /** Symbols pulled in. Empty means the whole module / a side-effect import. */
     symbols: string[];
