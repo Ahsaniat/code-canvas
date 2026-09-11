@@ -14,8 +14,11 @@ The canvas is **collapse-first**: folders open as compact chips carrying the agg
 - **Inline code previews** - syntax-highlighted, scrollable, click a token to jump to its definition
 - **Git-aware** - open changed files, live refresh on save
 
-## Status & Disclaimer
+## Status & Disclaimer (by original author wallxack)
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
+
+## Status & Disclaimer (by me, Ahsan)
+I have forked it from wallxack and fixed all known bugs. There maybe unknown bugs. I need to conduct regression test which I haven't done yet. But I have been using the extension for a month, so far so good. The codebase was suffering from massive optimization issue with graphics, specially graph rendering and staturing while loading graphs making the not only extension but also the VSCode almost unusable. I have identified all the optimization issues and tried to fix them. The extension is now stable. I will transition this codebase to react flow 12, and introduce nodesizer  later at the end of september, 2026. I have been working on this. 
 
 
 ## Requirements
