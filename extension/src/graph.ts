@@ -117,7 +117,12 @@ function countImporters(index: Index, file: string): number {
 export async function subgraph(index: Index, seeds: string[], maxNodes: number): Promise<Graph> {
     const seen = new Set<string>();
     const q: string[] = [];
+    // Seeds are themselves budgeted. "Seed Folder…" passes every file under the
+    // chosen folder; adding them all unconditionally let a folder seed blow
+    // past maxNodes before the BFS even started.
+    const budget = Math.max(1, Math.floor(maxNodes));
     for (const s of seeds) {
+        if (seen.size >= budget) break;
         const sNorm = normalizePath(s);
         if (index.nodes.has(sNorm)) { seen.add(sNorm); q.push(sNorm); }
     }
