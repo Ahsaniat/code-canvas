@@ -18,6 +18,8 @@ interface MetaStore {
 
   hydrate: (meta: MetaFile) => void;
   applyAutoDescriptions: (entries: AutoDescriptions) => void;
+  /** Patch one file's meta and persist it to the extension host. */
+  patchFileMeta: (filePath: string, patch: Partial<FileMeta>) => void;
 
   setDescription: (filePath: string, description: string) => void;
   setDescriptionExpanded: (filePath: string, expanded: boolean) => void;
@@ -56,35 +58,33 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
     return changed ? { files } : {};
   }),
 
-  // Internal helper: patch and persist
-  _patch(filePath: string, patch: Partial<FileMeta>) {
-    set((state) => {
-      const updated = { ...state.files[filePath], ...patch };
-      const files = { ...state.files, [filePath]: updated };
-      postToExtension({ type: 'updateFileMeta', filePath, meta: updated });
-      return { files };
-    });
+  // Patch and persist. The host message is sent after `set`, not inside the
+  // updater, so a double-invoked updater can never double-post.
+  patchFileMeta(filePath, patch) {
+    const updated = { ...get().files[filePath], ...patch };
+    set((state) => ({ files: { ...state.files, [filePath]: updated } }));
+    postToExtension({ type: 'updateFileMeta', filePath, meta: updated });
   },
 
   setDescription: (filePath, description) =>
-    (get() as any)._patch(filePath, { description }),
+    get().patchFileMeta(filePath, { description }),
 
   setDescriptionExpanded: (filePath, descriptionExpanded) =>
-    (get() as any)._patch(filePath, { descriptionExpanded }),
+    get().patchFileMeta(filePath, { descriptionExpanded }),
 
   setCollapsed: (filePath, collapsed) =>
-    (get() as any)._patch(filePath, { collapsed }),
+    get().patchFileMeta(filePath, { collapsed }),
 
   addTag: (filePath, tag) => {
     const current = get().files[filePath]?.tags ?? [];
     if (!current.includes(tag)) {
-      (get() as any)._patch(filePath, { tags: [...current, tag] });
+      get().patchFileMeta(filePath, { tags: [...current, tag] });
     }
   },
 
   removeTag: (filePath, tag) => {
     const current = get().files[filePath]?.tags ?? [];
-    (get() as any)._patch(filePath, { tags: current.filter((t) => t !== tag) });
+    get().patchFileMeta(filePath, { tags: current.filter((t) => t !== tag) });
   },
 
   toggleTagFilter: (tag) =>
