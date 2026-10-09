@@ -79,11 +79,13 @@ type Props = {
     file: string;
     lang: 'ts' | 'js' | 'py' | 'other';
     content: string;
+    /** True when the host capped the preview at `codeCanvas.maxPreviewBytes`. */
+    truncated?: boolean;
     onTokenClick: (payload: { path: string; line: number; character: number; token: string }) => void;
     wrap?: boolean;
 };
 
-function CodeCardInner({ file, lang, content, onTokenClick, wrap }: Props, ref: React.Ref<CodeCardHandle>) {
+function CodeCardInner({ file, lang, content, truncated, onTokenClick, wrap }: Props, ref: React.Ref<CodeCardHandle>) {
     const effectiveLang = useMemo<'ts' | 'js' | 'py' | 'other'>(() => {
         if (lang && lang !== 'other') return lang;
         const lower = (file || '').toLowerCase();
@@ -160,6 +162,11 @@ function CodeCardInner({ file, lang, content, onTokenClick, wrap }: Props, ref: 
         <div className="code-card nowheel" ref={containerRef}>
             <div className="file-title">{file}</div>
             <pre ref={preRef} id={`code-${file}`} className={`hljs${wrap ? ' wrap' : ''}`} onMouseUp={onClick} dangerouslySetInnerHTML={{ __html: html }} />
+            {truncated ? (
+                <div className="code-truncated-note" title="Raise codeCanvas.maxPreviewBytes to see more">
+                    Preview truncated at codeCanvas.maxPreviewBytes
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -168,7 +175,8 @@ const CodeCard = React.memo(React.forwardRef(CodeCardInner), (prev, next) => (
     prev.file === next.file &&
     prev.content === next.content &&
     prev.wrap === next.wrap &&
-    prev.lang === next.lang
+    prev.lang === next.lang &&
+    prev.truncated === next.truncated
 ));
 
 export default CodeCard;

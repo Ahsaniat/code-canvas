@@ -2,7 +2,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { htmlForWebview, Graph } from './util';
-import { buildIndex, describeGraph, subgraph, type Index } from './graph';
+import { buildIndex, describeGraph, mapWithConcurrency, subgraph, type Index } from './graph';
 import { getChangedFiles, watchGitState } from './git';
 import * as lsp from './lsp';
 import { mergeAutoDescriptions, readMeta, updateFileMeta } from './meta';
@@ -224,14 +224,19 @@ function openPanel(context: vscode.ExtensionContext) {
             case 'requestCode': {
                 const { path } = msg;
                 const maxBytes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxPreviewBytes') ?? 100_000;
-                const content = safeRead(path, maxBytes);
-                panel?.webview.postMessage({ type: 'code', path, content });
+                const { content, truncated } = await readCapped(path, maxBytes);
+                panel?.webview.postMessage({ type: 'code', path, content, truncated });
                 break;
             }
             case 'requestCodeMany': {
                 const { paths } = msg as { paths: string[] };
                 const maxBytes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxPreviewBytes') ?? 100_000;
-                const entries = (paths || []).map(p => ({ path: p, content: safeRead(p, maxBytes) }));
+                // Bounded-concurrency async reads: this used to be one blocking
+                // readFileSync per file, which froze the extension host on open.
+                const entries = await mapWithConcurrency(paths || [], 16, async (p) => {
+                    const { content, truncated } = await readCapped(p, maxBytes);
+                    return { path: p, content, truncated };
+                });
                 panel?.webview.postMessage({ type: 'codeMany', entries });
                 break;
             }
@@ -310,10 +315,33 @@ function isSubPath(parent: string, child: string): boolean {
     }
 }
 
-function safeRead(p: string, _limit: number): string {
+/**
+ * Read at most `limit` bytes of a file as UTF-8, without loading the rest.
+ *
+ * `codeCanvas.maxPreviewBytes` used to be read from config and then dropped —
+ * the helper took a `_limit` it never used and read the whole file
+ * synchronously. A preview is a preview: only the prefix crosses the wire.
+ */
+async function readCapped(p: string, limit: number): Promise<{ content: string; truncated: boolean }> {
+    const cap = Math.max(0, Math.floor(limit));
     try {
-        return fs.readFileSync(p, 'utf8');
+        const handle = await fs.promises.open(p, 'r');
+        try {
+            const stat = await handle.stat();
+            if (!stat.isFile()) return { content: '', truncated: false };
+            const size = Math.min(stat.size, cap);
+            if (size === 0) return { content: '', truncated: stat.size > 0 };
+            const buf = Buffer.alloc(size);
+            await handle.read(buf, 0, size, 0);
+            let content = buf.toString('utf8');
+            // A multi-byte character cut at the cap decodes to U+FFFD; drop the
+            // trailing replacement char so a truncated preview does not end on it.
+            if (stat.size > cap && content.endsWith('\uFFFD')) content = content.slice(0, -1);
+            return { content, truncated: stat.size > cap };
+        } finally {
+            await handle.close();
+        }
     } catch {
-        return '';
+        return { content: '', truncated: false };
     }
 }

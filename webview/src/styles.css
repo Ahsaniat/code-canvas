@@ -125,6 +125,20 @@ html,
     display: none;
 }
 
+/* Shown when the host capped the preview at codeCanvas.maxPreviewBytes. Sticky
+   so it stays visible while the truncated body is scrolled. */
+.code-truncated-note {
+    position: sticky;
+    bottom: 0;
+    padding: 4px 10px;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: #94a3b8;
+    background: linear-gradient(180deg, rgba(13, 17, 23, 0), rgba(13, 17, 23, 0.92));
+    border-top: 1px solid var(--wire-faint);
+}
+
 pre.hljs {
     margin: 0;
     padding: 8px 10px 8px 56px;

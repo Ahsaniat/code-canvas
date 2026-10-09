@@ -194,6 +194,7 @@ export default function App() {
     const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
     const [zoomOk, setZoomOk] = useState<boolean>(true);
     const codeCacheRef = useRef<Record<string, string>>({});
+    const truncatedCacheRef = useRef<Record<string, boolean>>({});
     const overlayRef = useRef<HoverOverlayHandle | null>(null);
     const zoomSmoothTimerRef = useRef<number | null>(null);
     const moveSamplesRef = useRef<Array<{ t: number; x: number; y: number }>>([]);
@@ -319,11 +320,13 @@ export default function App() {
             else if (msg.type === 'toggleEdges') setShowEdges(s => !s);
             else if (msg.type === 'code') {
                 codeCacheRef.current[msg.path] = msg.content || '';
+                truncatedCacheRef.current[msg.path] = !!msg.truncated;
                 onCodeArrived([msg.path]);
             } else if (msg.type === 'codeMany') {
                 const updated: string[] = [];
-                for (const { path, content } of (msg.entries || [])) {
+                for (const { path, content, truncated } of (msg.entries || [])) {
                     codeCacheRef.current[path] = content || '';
+                    truncatedCacheRef.current[path] = !!truncated;
                     updated.push(path);
                 }
                 onCodeArrived(updated);
@@ -780,7 +783,7 @@ export default function App() {
 
     const canvasCtx = useMemo<CanvasContextValue>(() => ({
         zoomOk, wrap,
-        codeCacheRef, codeRefs,
+        codeCacheRef, truncatedCacheRef, codeRefs,
         onTokenClick, onOpenFile: openFileByPath, onToggleFolder: toggleFolder,
     }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder]);
 

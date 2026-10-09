@@ -30,6 +30,8 @@ export interface CanvasContextValue {
     zoomOk: boolean;
     wrap: boolean;
     codeCacheRef: React.MutableRefObject<Record<string, string>>;
+    /** Paths whose preview hit `codeCanvas.maxPreviewBytes`. */
+    truncatedCacheRef: React.MutableRefObject<Record<string, boolean>>;
     codeRefs: React.MutableRefObject<Record<string, React.RefObject<CodeCardHandle>>>;
     onTokenClick: (payload: { path: string; line: number; character: number; token: string }) => void;
     onOpenFile: (path: string) => void;
@@ -85,6 +87,7 @@ function FileCanvasNode(p: NodeProps) {
     const data = p.data as { label: string; path: string; lang: any; dim?: boolean; width?: number };
     const path = data.path;
     const content = ctx.codeCacheRef.current[path] ?? path;
+    const truncated = ctx.truncatedCacheRef.current[path] === true;
 
     // P1-2: selective store subscriptions — this node re-renders only when ITS
     // own meta changes, not on every unrelated store update.
@@ -126,6 +129,7 @@ function FileCanvasNode(p: NodeProps) {
                     file={path}
                     lang={data.lang}
                     content={content}
+                    truncated={truncated}
                     onTokenClick={ctx.onTokenClick}
                     wrap={ctx.wrap}
                 />
