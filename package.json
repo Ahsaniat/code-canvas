@@ -1,9 +1,8 @@
 {
   "name": "code-canvas",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Code Canvas",
-  "main": "index.js",
   "scripts": {
     "build": "npm -w webview run build && npm -w extension run build",
     "watch": "npm -w webview run dev & npm -w extension run watch",
