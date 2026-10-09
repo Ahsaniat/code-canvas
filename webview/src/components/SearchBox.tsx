@@ -97,6 +97,11 @@ export const SearchBox = forwardRef<SearchBoxHandle, SearchBoxProps>(function Se
                     placeholder="Search  (name, path, export, tag)"
                     title="Plain text searches every field. Prefixes: name: path: sym: tag:"
                     spellCheck={false}
+                    role="combobox"
+                    aria-expanded={showList}
+                    aria-controls="search-results-list"
+                    aria-autocomplete="list"
+                    aria-activedescendant={showList && hits[active] ? `search-hit-${hits[active].id}` : undefined}
                     onChange={e => { onQueryChange(e.target.value); setOpen(true); }}
                     onFocus={() => setOpen(true)}
                     onKeyDown={onKeyDown}
@@ -120,14 +125,17 @@ export const SearchBox = forwardRef<SearchBoxHandle, SearchBoxProps>(function Se
             </div>
 
             {showList ? (
-                <div className="search-results" ref={listRef}>
+                <div className="search-results" ref={listRef} id="search-results-list" role="listbox">
                     {hits.length === 0 ? (
-                        <div className="search-empty">No matches</div>
+                        <div className="search-empty" role="status">No matches</div>
                     ) : (
                         <>
                             {hits.map((hit, i) => (
                                 <button
                                     key={hit.id}
+                                    id={`search-hit-${hit.id}`}
+                                    role="option"
+                                    aria-selected={i === active}
                                     className={`search-hit ${i === active ? 'search-hit--active' : ''}`}
                                     // `mousedown` fires before the input's blur, so the
                                     // click is not lost to the list unmounting.

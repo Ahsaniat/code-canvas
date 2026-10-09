@@ -1182,7 +1182,7 @@ export default function App() {
                 <div className="refs-panel">
                     <div className="refs-panel-header">
                         <span>References ({refResults.refs.length})</span>
-                        <button onClick={() => setRefResults(null)} title="Close">×</button>
+                        <button onClick={() => setRefResults(null)} title="Close" aria-label="Close references panel">×</button>
                     </div>
                     <div className="refs-panel-list">
                         {refResults.refs.length === 0 && <div className="refs-panel-empty">No references found.</div>}
