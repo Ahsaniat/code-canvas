@@ -28,6 +28,7 @@ export function TagFilterToolbar() {
         <button
           key={tag}
           className={`tag-filter-pill ${activeTagFilters.includes(tag) ? 'tag-filter-pill--active' : ''}`}
+          aria-pressed={activeTagFilters.includes(tag)}
           onClick={() => toggleTagFilter(tag)}
         >
           {tag}

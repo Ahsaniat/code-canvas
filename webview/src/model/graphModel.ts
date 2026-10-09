@@ -221,8 +221,10 @@ export function projectGraph(
     type Frame = { id: string; parentId?: string };
     const queue: Frame[] = model.displayRoots.map(id => ({ id, parentId: undefined }));
 
-    while (queue.length) {
-        const { id, parentId } = queue.shift()!;
+    // Index cursor instead of shift(): the queue only grows at the tail, so a
+    // pointer keeps the walk O(n) rather than re-indexing per node.
+    for (let qi = 0; qi < queue.length; qi++) {
+        const { id, parentId } = queue[qi];
         if (hidden.has(id)) continue;
         const node = model.nodes.get(id);
         if (!node) continue;

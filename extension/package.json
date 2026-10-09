@@ -16,8 +16,7 @@
     ],
     "activationEvents": [
         "onCommand:codeCanvas.open",
-        "onCommand:codeCanvas.openChanged",
-        "onStartupFinished"
+        "onCommand:codeCanvas.openChanged"
     ],
     "main": "dist/extension.js",
     "contributes": {

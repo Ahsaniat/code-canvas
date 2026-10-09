@@ -14,6 +14,8 @@ import { useMetaStore } from './store/metaStore';
 import { TagFilterToolbar } from './components/TagFilterToolbar';
 import { SearchBox, SearchBoxHandle } from './components/SearchBox';
 import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
+import { CanvasErrorBoundary } from './components/CanvasErrorBoundary';
+import * as log from './log';
 
 // VS Code webview API
 declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string>; vscode?: any; } }
@@ -532,7 +534,7 @@ export default function App() {
             }
             return merged;
         } catch (err) {
-            console.warn('[code-canvas] edge routing failed, keeping previous paths:', err);
+            log.warn('edge routing failed, keeping previous paths:', err);
             return edgeList;
         }
     }
@@ -570,7 +572,7 @@ export default function App() {
             // A search hit that needed an expansion only has a real position now.
             consumePendingReveal(ordered);
         } catch (error) {
-            console.warn('[code-canvas] layout failed:', error);
+            log.warn('layout failed:', error);
         }
     }
 
@@ -974,7 +976,7 @@ export default function App() {
                 <button onClick={() => vscode?.postMessage({ type: 'requestChanged' })}>Open Changed (⇧O)</button>
                 <button onClick={() => vscode?.postMessage({ type: 'requestGraph' })}>Reload</button>
                 <button onClick={expandSelection}>Expand (E)</button>
-                <button onClick={() => vscode?.postMessage({ type: 'toggleRefs' })}>Refs (R)</button>
+                <button onClick={() => setShowRefs(s => !s)}>Refs (R)</button>
                 <button onClick={() => setWrap(w => !w)}>{wrap ? 'Unwrap' : 'Wrap'}</button>
                 <button onClick={() => setShowEdges(s => !s)}>{showEdges ? 'Hide Edges' : 'Show Edges'}</button>
                 <button onClick={() => vscode?.postMessage({ type: 'seedFolder' })}>Seed Folder…</button>
@@ -992,7 +994,8 @@ export default function App() {
                 {focusIds ? (<button onClick={clearFocus}>Clear Focus</button>) : null}
             </div>
             <CanvasContext.Provider value={canvasCtx}>
-                <ReactFlow
+                <CanvasErrorBoundary>
+                    <ReactFlow
                     nodes={displayNodes as any}
                     edges={displayEdges as any}
                     nodeTypes={nodeTypes as any}
@@ -1177,12 +1180,13 @@ export default function App() {
                     <MiniMap pannable zoomable nodeStrokeColor={() => 'rgba(255,255,255,0.55)'} nodeColor={(n: any): string => (n.type === 'group' ? 'transparent' : 'rgba(255,255,255,0.35)')} />
                     <Controls />
                 </ReactFlow>
+                </CanvasErrorBoundary>
             </CanvasContext.Provider>
             {refResults && (
                 <div className="refs-panel">
                     <div className="refs-panel-header">
                         <span>References ({refResults.refs.length})</span>
-                        <button onClick={() => setRefResults(null)} title="Close">×</button>
+                        <button onClick={() => setRefResults(null)} title="Close" aria-label="Close references panel">×</button>
                     </div>
                     <div className="refs-panel-list">
                         {refResults.refs.length === 0 && <div className="refs-panel-empty">No references found.</div>}

@@ -59,11 +59,6 @@ async function writeMetaUnsafe(root: string, data: MetaFile): Promise<void> {
   }
 }
 
-/** Atomic write, serialized against every other writer of the same root. */
-export async function writeMeta(root: string, data: MetaFile): Promise<void> {
-  return enqueue(root, () => writeMetaUnsafe(root, data));
-}
-
 export async function updateFileMeta(
   root: string,
   filePath: string,
