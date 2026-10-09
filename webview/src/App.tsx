@@ -14,6 +14,7 @@ import { useMetaStore } from './store/metaStore';
 import { TagFilterToolbar } from './components/TagFilterToolbar';
 import { SearchBox, SearchBoxHandle } from './components/SearchBox';
 import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
+import { CanvasErrorBoundary } from './components/CanvasErrorBoundary';
 import * as log from './log';
 
 // VS Code webview API
@@ -993,7 +994,8 @@ export default function App() {
                 {focusIds ? (<button onClick={clearFocus}>Clear Focus</button>) : null}
             </div>
             <CanvasContext.Provider value={canvasCtx}>
-                <ReactFlow
+                <CanvasErrorBoundary>
+                    <ReactFlow
                     nodes={displayNodes as any}
                     edges={displayEdges as any}
                     nodeTypes={nodeTypes as any}
@@ -1178,6 +1180,7 @@ export default function App() {
                     <MiniMap pannable zoomable nodeStrokeColor={() => 'rgba(255,255,255,0.55)'} nodeColor={(n: any): string => (n.type === 'group' ? 'transparent' : 'rgba(255,255,255,0.35)')} />
                     <Controls />
                 </ReactFlow>
+                </CanvasErrorBoundary>
             </CanvasContext.Provider>
             {refResults && (
                 <div className="refs-panel">
