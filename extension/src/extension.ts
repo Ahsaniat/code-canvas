@@ -194,13 +194,12 @@ function openPanel(context: vscode.ExtensionContext) {
                 if (loc) {
                     let openUri: vscode.Uri | undefined;
                     let range: vscode.Range | undefined;
-                    const anyLoc = loc as any;
-                    if (anyLoc.targetUri) {
-                        openUri = toUri(anyLoc.targetUri);
-                        range = (anyLoc.targetSelectionRange || anyLoc.targetRange) as vscode.Range | undefined;
-                    } else if (anyLoc.uri) {
-                        openUri = toUri(anyLoc.uri);
-                        range = anyLoc.range as vscode.Range | undefined;
+                    if ('targetUri' in loc) {
+                        openUri = toUri(loc.targetUri);
+                        range = loc.targetSelectionRange ?? loc.targetRange;
+                    } else {
+                        openUri = toUri(loc.uri);
+                        range = loc.range;
                     }
                     if (openUri) await vscode.window.showTextDocument(openUri, { preview: false, selection: range });
                 }
