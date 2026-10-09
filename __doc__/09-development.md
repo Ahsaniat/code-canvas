@@ -114,6 +114,28 @@ Assert per scenario:
 Cover uniform sizes, varied sizes, one huge expanded folder, all-orphans, a
 single node, and dense graphs — with several seeds each.
 
+### Checking search and reveal
+
+Bundle `search.ts` alongside `graphModel.ts` and assert the reveal invariant —
+that **every** indexed entry can be brought onto the canvas from any starting
+state. This is what caught the elided-root-wrapper hit:
+
+```js
+const idx = buildSearchIndex(model);
+for (const start of [new Set(), initialExpansion(model), new Set(model.folderIds)]) {
+  for (const e of idx.entries) {
+    const node = model.nodes.get(e.id);
+    const expanded = node.parentId ? expandWithAncestors(model, start, node.parentId) : start;
+    const p = projectGraph(model, expanded, unhideChain(model, new Set(), e.id));
+    console.assert(p.nodes.some(n => n.id === e.id), e.label);
+  }
+}
+```
+
+Also worth asserting: folder hits project as `kind === 'folder'` (a chip, not a
+blown-open container), and `matchedWithAncestors` never yields an id absent from
+the model.
+
 ### Checking the projection
 
 Bundle `webview/src/model/graphModel.ts` and chain it onto the indexer output to
@@ -136,6 +158,8 @@ console.log(p.nodes.length, p.edges.length);
 | Layout is Dagre when ELK was chosen | ELK worker failed to load — check the CSP allows `worker-src blob:` |
 | Code cards won't scroll | The scroll container lost its `nowheel` class; React Flow is eating the wheel event |
 | `grep` finds nothing in `graphModel.ts` | The file contains literal NUL bytes used as map-key delimiters, so `grep` treats it as binary. Use `grep -a`. |
+| A search hit does nothing when picked | It resolved to a node outside `displayRoots` (the elided root wrapper). `buildSearchIndex` walks down from `displayRoots` precisely to exclude those. |
+| Typing in search expands nodes or pans the canvas | A global key handler is missing its `isTypingTarget` guard. |
 
 ## Known limitations
 

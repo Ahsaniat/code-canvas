@@ -10,6 +10,9 @@ import { describeFile, describeFolder, extractDocSummary, extractExportedSymbols
 const JS_GLOB = ['**/*.{js,jsx,ts,tsx}'];
 const PY_GLOB = ['**/*.py'];
 
+/** Per-file ceiling on exported names sent to the webview for search. */
+const MAX_NODE_SYMBOLS = 64;
+
 // Normalize paths to a canonical absolute form used for all map/set keys
 function normalizePath(p: string): string {
     try {
@@ -199,6 +202,9 @@ export async function subgraph(index: Index, seeds: string[], maxNodes: number):
             lang: (index.lang.get(f) || 'other') as any,
             type: 'file' as const,
             parentId: parent?.id,
+            // Capped: a barrel file can re-export hundreds of names, and past the
+            // first few dozen they stop being a useful way to find that file.
+            symbols: (index.exports.get(f) ?? []).slice(0, MAX_NODE_SYMBOLS),
         };
     });
 

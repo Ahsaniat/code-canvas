@@ -9,6 +9,15 @@ export type GraphNode = {
     type: 'file' | 'group';
     // React Flow v11.11 preferred field (was `parentNode`). See P2-4.
     parentId?: string;
+    /**
+     * Top-level exported symbol names, on file nodes only.
+     *
+     * These are already extracted for the auto-descriptions, so shipping them
+     * costs one extra array per file and lets the webview answer "which file
+     * exports `foo`?" without a round trip — the canvas is collapse-first, so
+     * search must be able to reach files that are not currently rendered.
+     */
+    symbols?: string[];
 };
 
 /** How a binding crossed the module boundary. Drives the edge hover tooltip. */

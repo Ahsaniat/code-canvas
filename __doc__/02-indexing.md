@@ -44,7 +44,29 @@ of `readFileSync`. One pass per file captures everything downstream needs:
 - the leading doc comment / module docstring
 
 Nothing re-reads a file later; description generation consumes what this pass
-already captured.
+already captured, and the same exported names ship to the webview on
+`GraphNode.symbols` (capped at 64 per file) to back symbol search.
+
+### Export forms recognised
+
+**JavaScript / TypeScript**
+
+| Form | Names captured |
+| --- | --- |
+| `export function f`, `export class C`, `export const x`, `export type T`, … | `f`, `C`, `x`, `T` |
+| `export { a, b as c }` | `a`, `c` |
+| `export default function () {}` | `default export` |
+| `exports.foo =` / `module.exports.foo =` | `foo` |
+| `module.exports = Ident` | `Ident` |
+| `module.exports = { a, b: c }` | `a`, `b` |
+
+`module.exports = mongoose.model('User', schema)` is deliberately **not**
+matched — no regex can honestly name what a factory call exports. That case is
+recovered on the consumer side instead; see
+[graph model](03-graph-model.md#what-is-searchable).
+
+**Python**: `__all__` when present, otherwise top-level `class` and non-underscore
+`def`.
 
 ### Import forms recognised
 

@@ -26,6 +26,10 @@
 | `Shift++` | Load 25 more |
 | `R` | Toggle references panel |
 | `E` | Expand selection |
+| `/` or `Ctrl/Cmd+F` | Focus the search box |
+
+Every global shortcut is suppressed while a text field has focus, so typing `e`
+or a space into search does not expand the selection or start a pane drag.
 
 ## Settings
 
@@ -72,6 +76,38 @@ Below ~0.65 zoom, file bodies render a large-label placeholder instead of
 highlighted code. This is a deliberate performance floor — highlighting code
 nobody can read is wasted work.
 
+### Search
+
+The toolbar search box finds nodes anywhere in the indexed tree — including
+inside collapsed folders, which is most of the repository.
+
+| Query | Matches |
+| --- | --- |
+| `graphModel` | Any field: name, path, export or tag |
+| `name:index` | Filename only (`file:` is a synonym) |
+| `path:src/model` | Path only (`dir:` is a synonym) |
+| `sym:buildModel` | Exported symbol only (`symbol:`, `export:`) |
+| `tag:api` | Tag only |
+
+Ranking is exact name → name prefix → name substring → export → tag → path, with
+a subsequence fallback on filenames (`gm` finds `graphModel.ts`). An unrecognised
+prefix is treated as literal text, so `http://x` searches for `http://x`.
+
+| Input | Action |
+| --- | --- |
+| `↑` / `↓` | Move through results |
+| `Enter` | Reveal the active result |
+| `Esc` | Close the list; again to clear the query |
+| **Filter** button | Dim every node that does not match |
+
+Picking a result **reveals** it: hidden ancestors are restored, collapsed
+ancestors are expanded, the viewport centres on the node (zooming in if needed,
+never out), and the node plus its direct neighbours are focused. A folder result
+arrives as a collapsed chip, not blown open.
+
+In Filter mode a folder stays lit when anything inside it matches — otherwise the
+only affordance that could reveal the match would itself be dimmed.
+
 ### Description panel
 
 Collapsed shows the first sentence on one line with a `more…` affordance. Click
@@ -90,8 +126,8 @@ Nodes intentionally have no hover banner — their description is on the node.
 
 ### Toolbar
 
-Layout selector, Relayout, Hide/Show Edges, Expand (E), Seed Folder…, Load More,
-Restore Hidden, tag filters.
+Search box, tag filters, Layout selector, Relayout, Hide/Show Edges, Expand (E),
+Seed Folder…, Load More, Restore Hidden.
 
 ## Live updates
 
