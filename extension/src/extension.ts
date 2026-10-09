@@ -169,10 +169,6 @@ function openPanel(context: vscode.ExtensionContext) {
                 vscode.window.showTextDocument(uri, opts);
                 break;
             }
-            case 'toggleEdges': {
-                panel?.webview.postMessage({ type: 'toggleEdges' });
-                break;
-            }
             case 'requestChanged': {
                 const files = await getChangedFiles();
                 panel?.webview.postMessage({ type: 'changedFiles', files });

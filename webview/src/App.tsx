@@ -976,7 +976,7 @@ export default function App() {
                 <button onClick={() => vscode?.postMessage({ type: 'requestChanged' })}>Open Changed (⇧O)</button>
                 <button onClick={() => vscode?.postMessage({ type: 'requestGraph' })}>Reload</button>
                 <button onClick={expandSelection}>Expand (E)</button>
-                <button onClick={() => vscode?.postMessage({ type: 'toggleRefs' })}>Refs (R)</button>
+                <button onClick={() => setShowRefs(s => !s)}>Refs (R)</button>
                 <button onClick={() => setWrap(w => !w)}>{wrap ? 'Unwrap' : 'Wrap'}</button>
                 <button onClick={() => setShowEdges(s => !s)}>{showEdges ? 'Hide Edges' : 'Show Edges'}</button>
                 <button onClick={() => vscode?.postMessage({ type: 'seedFolder' })}>Seed Folder…</button>
