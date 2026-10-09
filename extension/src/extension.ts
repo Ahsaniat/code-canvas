@@ -176,6 +176,7 @@ function openPanel(context: vscode.ExtensionContext) {
                 break;
             }
             case 'openFile': {
+                if (!isAllowedPath(msg.path)) break;
                 const uri = vscode.Uri.file(msg.path);
                 const opts: vscode.TextDocumentShowOptions = { preview: false };
                 if (typeof msg.line === 'number') {
@@ -196,6 +197,10 @@ function openPanel(context: vscode.ExtensionContext) {
             }
             case 'requestRefs': {
                 const { path, line, character } = msg;
+                if (!isAllowedPath(path)) {
+                    panel?.webview.postMessage({ type: 'refs', at: { path, line, character }, refs: [] });
+                    break;
+                }
                 const uri = vscode.Uri.file(path);
                 const refs = await lsp.getReferences(uri, new vscode.Position(line, character));
                 panel?.webview.postMessage({ type: 'refs', at: { path, line, character }, refs });
@@ -203,6 +208,7 @@ function openPanel(context: vscode.ExtensionContext) {
             }
             case 'requestDefOpen': {
                 const { path, line, character } = msg;
+                if (!isAllowedPath(path)) break;
                 const fromUri = vscode.Uri.file(path);
                 const defs = await lsp.getDefinition(fromUri, new vscode.Position(line, character));
                 const loc = Array.isArray(defs) ? defs[0] : defs;
@@ -223,6 +229,10 @@ function openPanel(context: vscode.ExtensionContext) {
             }
             case 'requestCode': {
                 const { path } = msg;
+                if (!isAllowedPath(path)) {
+                    panel?.webview.postMessage({ type: 'code', path, content: '', truncated: false });
+                    break;
+                }
                 const maxBytes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxPreviewBytes') ?? 100_000;
                 const { content, truncated } = await readCapped(path, maxBytes);
                 panel?.webview.postMessage({ type: 'code', path, content, truncated });
@@ -233,7 +243,7 @@ function openPanel(context: vscode.ExtensionContext) {
                 const maxBytes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxPreviewBytes') ?? 100_000;
                 // Bounded-concurrency async reads: this used to be one blocking
                 // readFileSync per file, which froze the extension host on open.
-                const entries = await mapWithConcurrency(paths || [], 16, async (p) => {
+                const entries = await mapWithConcurrency((paths || []).filter(isAllowedPath), 16, async (p) => {
                     const { content, truncated } = await readCapped(p, maxBytes);
                     return { path: p, content, truncated };
                 });
@@ -296,6 +306,19 @@ function toUri(u: unknown): vscode.Uri | undefined {
         }
     } catch { }
     return undefined;
+}
+
+/**
+ * Reject host messages that reference files outside the indexed workspace.
+ *
+ * The webview only ever names files from the index, but it is the untrusted
+ * side of this boundary; a read/open request for anything else is refused
+ * rather than trusted.
+ */
+function isAllowedPath(p: unknown): p is string {
+    if (typeof p !== 'string' || !p) return false;
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return !!root && isSubPath(root, p);
 }
 
 function isSubPath(parent: string, child: string): boolean {
