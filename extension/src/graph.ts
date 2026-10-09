@@ -10,6 +10,9 @@ import { describeFile, describeFolder, extractDocSummary, extractExportedSymbols
 const JS_GLOB = ['**/*.{js,jsx,ts,tsx}'];
 const PY_GLOB = ['**/*.py'];
 
+/** Per-file ceiling on exported names sent to the webview for search. */
+const MAX_NODE_SYMBOLS = 64;
+
 // Normalize paths to a canonical absolute form used for all map/set keys
 function normalizePath(p: string): string {
     try {
@@ -114,7 +117,12 @@ function countImporters(index: Index, file: string): number {
 export async function subgraph(index: Index, seeds: string[], maxNodes: number): Promise<Graph> {
     const seen = new Set<string>();
     const q: string[] = [];
+    // Seeds are themselves budgeted. "Seed Folder…" passes every file under the
+    // chosen folder; adding them all unconditionally let a folder seed blow
+    // past maxNodes before the BFS even started.
+    const budget = Math.max(1, Math.floor(maxNodes));
     for (const s of seeds) {
+        if (seen.size >= budget) break;
         const sNorm = normalizePath(s);
         if (index.nodes.has(sNorm)) { seen.add(sNorm); q.push(sNorm); }
     }
@@ -199,6 +207,9 @@ export async function subgraph(index: Index, seeds: string[], maxNodes: number):
             lang: (index.lang.get(f) || 'other') as any,
             type: 'file' as const,
             parentId: parent?.id,
+            // Capped: a barrel file can re-export hundreds of names, and past the
+            // first few dozen they stop being a useful way to find that file.
+            symbols: (index.exports.get(f) ?? []).slice(0, MAX_NODE_SYMBOLS),
         };
     });
 
@@ -484,7 +495,7 @@ async function safeReadAsync(p: string): Promise<string> {
 }
 
 // Run async tasks with a bounded number of them in flight at once.
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
     const results: R[] = new Array(items.length);
     let next = 0;
     const count = Math.max(1, Math.min(limit, items.length));

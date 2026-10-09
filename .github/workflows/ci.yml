@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master, feature/next]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck extension
+        run: npx tsc --noEmit -p extension/tsconfig.json
+
+      - name: Typecheck webview
+        run: npx tsc --noEmit -p webview/tsconfig.json
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

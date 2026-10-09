@@ -124,6 +124,7 @@ view.
 | --- | --- |
 | `expandWithAncestors(id)` | Expands the node and every ancestor, so it cannot be expanded-but-invisible |
 | `collapseWithDescendants(id)` | Collapses the node and everything beneath it, so re-expanding starts clean |
+| `unhideChain(id)` | Clears `hidden` for the node and every ancestor — a hidden ancestor cuts off the whole subtree |
 
 Expansion state persists via the webview `getState`/`setState` API and survives a
 reload.
@@ -133,3 +134,48 @@ reload.
 Deleting a node **hides it from the projection** rather than mutating the React
 Flow array — the next re-projection would simply undo an array mutation. A
 "Restore Hidden" button clears the set.
+
+## Search operates on the model, not the projection
+
+`model/search.ts` indexes the **full** model. This is forced by the collapse-first
+design: at any moment most of the repository is folded inside a collapsed folder
+and never reaches React Flow, so searching what is rendered could only ever find
+what the user can already see.
+
+The index is built by walking **down from `displayRoots`**, not by iterating
+`model.nodes`. The two differ by the elided workspace-root wrapper, which stays
+in `nodes` but can never be projected — indexing it produced a result that looked
+ordinary and then silently failed to reveal.
+
+Selecting a hit runs the reveal sequence:
+
+1. `unhideChain` — clear any `hidden` ancestor.
+2. `expandWithAncestors(node.parentId)` — expand the ancestors, **not** the node,
+   so a folder hit arrives as a readable chip rather than blown open.
+3. Centre the viewport once the next layout pass gives the node a real position.
+
+Step 3 is why the reveal is deferred rather than immediate: a node that was just
+un-collapsed has no position until layout lands, so `App` parks the id in
+`pendingRevealRef` and `runLayout` consumes it. When no expansion was needed the
+node is already positioned and it centres straight away.
+
+### What is searchable
+
+| Field | Source |
+| --- | --- |
+| Name | `ModelNode.label` |
+| Path | `ModelNode.path` (directory part only, unless `path:` is given — the filename is already covered by Name) |
+| Export | `ModelNode.symbols`, unioned with names observed on **incoming edges** |
+| Tag | The meta store, passed in as `tagsOf(path)` |
+
+The export union matters. The declared-export scanner can only report what a
+regex can name, and the dominant CommonJS idiom —
+`module.exports = mongoose.model('User', schema)` — exports a symbol that appears
+nowhere as a declaration. Its importers name it (`const User = require('./user')`)
+and that binding is already on the edge, so the exporter and consumer sides are
+unioned: either one finding the name is enough.
+
+Filter mode dims non-matches, but the match set is expanded to include every
+**ancestor** of every hit. A match buried in a collapsed folder has no node of
+its own on the canvas, and dimming its only affordance would hide the fact that
+there is anything in there.

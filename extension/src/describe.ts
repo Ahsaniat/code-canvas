@@ -92,6 +92,9 @@ function extractJsDoc(source: string): string | undefined {
     return undefined;
 }
 
+
+
+
 function extractPyDocstring(source: string): string | undefined {
     let i = 0;
     if (source.startsWith('#!')) {
@@ -141,6 +144,13 @@ export function extractDocSummary(source: string, lang: SourceLang): string | un
 const RE_JS_EXPORT_DECL = /^[ \t]*export\s+(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(?:function\s*\*?|class|const|let|var|interface|type|enum|namespace)\s+([A-Za-z_$][\w$]*)/gm;
 const RE_JS_EXPORT_LIST = /^[ \t]*export\s*\{([^}]*)\}/gm;
 const RE_JS_DEFAULT_ANON = /^[ \t]*export\s+default\s+(?:async\s+)?(?:function\s*\(|\(|class\s*\{)/m;
+// CommonJS. Only the forms that name a symbol unambiguously — a factory call
+// like `module.exports = mongoose.model('User', s)` exports a name that no
+// regex can honestly recover, and is picked up from the import side instead.
+const RE_CJS_EXPORT_PROP = /^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=/gm;
+const RE_CJS_EXPORT_IDENT = /^[ \t]*module\.exports\s*=\s*([A-Za-z_$][\w$]*)\s*;?[ \t]*$/gm;
+const RE_CJS_EXPORT_OBJECT = /^[ \t]*module\.exports\s*=\s*\{([^}]*)\}/gm;
+const RE_IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 const RE_PY_DEF = /^(?:async\s+)?def\s+([A-Za-z_]\w*)/gm;
 const RE_PY_CLASS = /^class\s+([A-Za-z_]\w*)/gm;
 const RE_PY_ALL = /^__all__\s*=\s*[\[(]([^\])]*)[\])]/m;
@@ -178,6 +188,18 @@ export function extractExportedSymbols(source: string, lang: SourceLang): string
             for (const part of m[1].split(',')) {
                 const bits = part.replace(/\btype\b/g, '').trim().split(/\s+as\s+/);
                 push((bits[1] ?? bits[0] ?? '').trim());
+            }
+        }
+        RE_CJS_EXPORT_PROP.lastIndex = 0;
+        while ((m = RE_CJS_EXPORT_PROP.exec(source))) push(m[1]);
+        RE_CJS_EXPORT_IDENT.lastIndex = 0;
+        while ((m = RE_CJS_EXPORT_IDENT.exec(source))) push(m[1]);
+        RE_CJS_EXPORT_OBJECT.lastIndex = 0;
+        while ((m = RE_CJS_EXPORT_OBJECT.exec(source))) {
+            for (const part of m[1].split(',')) {
+                // `{ a }`, `{ a: b }`, `{ a: () => … }` all export the key `a`.
+                const key = part.split(':')[0].trim();
+                if (RE_IDENTIFIER.test(key)) push(key);
             }
         }
         if (RE_JS_DEFAULT_ANON.test(source)) push('default export');

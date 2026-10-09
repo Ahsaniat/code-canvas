@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, { Background, Controls, MarkerType, MiniMap, applyNodeChanges } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { nodeTypes, CanvasContext, CanvasContextValue, FolderNodeData } from './nodeTypes';
@@ -6,11 +6,13 @@ import { edgeTypes } from './edges/CircuitEdge';
 import { getLayoutedElements, LayoutAlgo, normalizeAlgo } from './layout';
 import { hashRects, routeEdges, ROUTE_CHUNK_SIZE, type Rect } from './edges/route';
 import {
-    buildModel, projectGraph, initialExpansion, expandWithAncestors, collapseWithDescendants,
+    buildModel, projectGraph, initialExpansion, expandWithAncestors, collapseWithDescendants, unhideChain,
     type GraphModel, type ProjectedEdge, type ProjectedNode, type RawEdge, type RawNode,
 } from './model/graphModel';
+import { buildSearchIndex, matchedWithAncestors, searchNodes, type SearchHit } from './model/search';
 import { useMetaStore } from './store/metaStore';
 import { TagFilterToolbar } from './components/TagFilterToolbar';
+import { SearchBox, SearchBoxHandle } from './components/SearchBox';
 import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
 
 // VS Code webview API
@@ -124,6 +126,22 @@ function mergeGraphs(
     return { nodes: Array.from(nodes.values()), edges: Array.from(edges.values()) };
 }
 
+/**
+ * True when a keystroke belongs to a text field rather than to the canvas.
+ *
+ * Every global shortcut must consult this. The canvas binds bare letters (`e`)
+ * and `Space`, so without the check, typing a folder name into the search box
+ * would expand the selection and start pane-dragging mid-word.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable === true;
+}
+
+/** Results shown in the dropdown; the filter set is not capped. */
+const SEARCH_RESULT_LIMIT = 40;
+
 type PersistedState = { expanded?: string[]; algo?: string; hidden?: string[] };
 
 export default function App() {
@@ -148,6 +166,19 @@ export default function App() {
     const hadPersistedExpansionRef = useRef((persisted.expanded ?? []).length > 0);
     const autoExpandedRef = useRef(false);
     const [hidden, setHidden] = useState<Set<string>>(() => new Set(persisted.hidden ?? []));
+    // Reveal has to know the CURRENT sets synchronously to decide whether it
+    // changed anything — a state updater's result arrives too late for that.
+    const expandedRef = useRef(expanded);
+    const hiddenRef = useRef(hidden);
+    useEffect(() => { expandedRef.current = expanded; }, [expanded]);
+    useEffect(() => { hiddenRef.current = hidden; }, [hidden]);
+
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchFilterOn, setSearchFilterOn] = useState(false);
+    const searchBoxRef = useRef<SearchBoxHandle | null>(null);
+    // Set when a hit needs an expansion first: the node has no position until the
+    // next layout lands, so centring waits for that pass instead of racing it.
+    const pendingRevealRef = useRef<string | null>(null);
 
     const [algo, setAlgo] = useState<LayoutAlgo>(() => normalizeAlgo(persisted.algo));
     const algoRef = useRef<LayoutAlgo>(algo);
@@ -163,6 +194,7 @@ export default function App() {
     const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
     const [zoomOk, setZoomOk] = useState<boolean>(true);
     const codeCacheRef = useRef<Record<string, string>>({});
+    const truncatedCacheRef = useRef<Record<string, boolean>>({});
     const overlayRef = useRef<HoverOverlayHandle | null>(null);
     const zoomSmoothTimerRef = useRef<number | null>(null);
     const moveSamplesRef = useRef<Array<{ t: number; x: number; y: number }>>([]);
@@ -288,11 +320,13 @@ export default function App() {
             else if (msg.type === 'toggleEdges') setShowEdges(s => !s);
             else if (msg.type === 'code') {
                 codeCacheRef.current[msg.path] = msg.content || '';
+                truncatedCacheRef.current[msg.path] = !!msg.truncated;
                 onCodeArrived([msg.path]);
             } else if (msg.type === 'codeMany') {
                 const updated: string[] = [];
-                for (const { path, content } of (msg.entries || [])) {
+                for (const { path, content, truncated } of (msg.entries || [])) {
                     codeCacheRef.current[path] = content || '';
+                    truncatedCacheRef.current[path] = !!truncated;
                     updated.push(path);
                 }
                 onCodeArrived(updated);
@@ -533,6 +567,8 @@ export default function App() {
             edgesRef.current = routed;
             setNodes(ordered);
             setEdges(routed);
+            // A search hit that needed an expansion only has a real position now.
+            consumePendingReveal(ordered);
         } catch (error) {
             console.warn('[code-canvas] layout failed:', error);
         }
@@ -663,8 +699,7 @@ export default function App() {
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            const target = e.target as HTMLElement | null;
-            if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+            if (isTypingTarget(e.target)) return;
             if (e.key === 'e' || e.key === 'E') expandSelection();
         };
         window.addEventListener('keydown', onKey);
@@ -673,8 +708,10 @@ export default function App() {
     }, [selectedIds]);
 
     useEffect(() => {
-        const down = (e: KeyboardEvent) => { if (e.code === 'Space') { try { rfInstanceRef.current?.setPaneDragging?.(true); } catch { } } };
-        const up = (e: KeyboardEvent) => { if (e.code === 'Space') { try { rfInstanceRef.current?.setPaneDragging?.(false); } catch { } } };
+        // Guarded like every other global shortcut: without this, a space in the
+        // search box put the canvas into pane-drag mode mid-word.
+        const down = (e: KeyboardEvent) => { if (e.code === 'Space' && !isTypingTarget(e.target)) { try { rfInstanceRef.current?.setPaneDragging?.(true); } catch { } } };
+        const up = (e: KeyboardEvent) => { if (e.code === 'Space' && !isTypingTarget(e.target)) { try { rfInstanceRef.current?.setPaneDragging?.(false); } catch { } } };
         window.addEventListener('keydown', down);
         window.addEventListener('keyup', up);
         return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
@@ -685,8 +722,7 @@ export default function App() {
     // not resurrect them.
     useEffect(() => {
         const onDelete = (e: KeyboardEvent) => {
-            const target = e.target as HTMLElement | null;
-            if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+            if (isTypingTarget(e.target)) return;
             if (e.key !== 'Delete' || !selectedIds.length) return;
             e.preventDefault();
             setHidden(prev => {
@@ -747,7 +783,7 @@ export default function App() {
 
     const canvasCtx = useMemo<CanvasContextValue>(() => ({
         zoomOk, wrap,
-        codeCacheRef, codeRefs,
+        codeCacheRef, truncatedCacheRef, codeRefs,
         onTokenClick, onOpenFile: openFileByPath, onToggleFolder: toggleFolder,
     }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder]);
 
@@ -756,11 +792,123 @@ export default function App() {
     const tagFilterMode = useMetaStore(s => s.tagFilterMode);
     const files = useMetaStore(s => s.files);
 
+    // -----------------------------------------------------------------------
+    // Search
+    // -----------------------------------------------------------------------
+
+    const searchIndex = useMemo(() => buildSearchIndex(model), [model]);
+    const tagsOf = useCallback(
+        (path: string | undefined) => (path ? files[path]?.tags ?? [] : []),
+        [files]);
+
+    // Ranking runs at a lower priority than the keystroke, so the input stays
+    // responsive on a large repository without a hand-rolled debounce.
+    const deferredQuery = useDeferredValue(searchQuery);
+    const searchMatches = useMemo(
+        () => (deferredQuery.trim() ? searchNodes(searchIndex, deferredQuery, { tagsOf }) : []),
+        [searchIndex, deferredQuery, tagsOf]);
+    const searchHits = useMemo(
+        () => searchMatches.slice(0, SEARCH_RESULT_LIMIT),
+        [searchMatches]);
+
+    // `null` disables dimming entirely. A query with no matches deliberately
+    // dims nothing rather than dimming everything — a uniformly grey canvas is
+    // not useful feedback, and the result list already says "No matches".
+    const searchMatchIds = useMemo(
+        () => (searchFilterOn && searchMatches.length ? matchedWithAncestors(model, searchMatches) : null),
+        [model, searchMatches, searchFilterOn]);
+
+    /** Centre the viewport on a node using its absolute (canvas-space) rect. */
+    const centerOnNode = useCallback((id: string, source: Node[]) => {
+        const { rectById } = absoluteRects(source);
+        const rect = rectById.get(id);
+        if (!rect) return;
+        cancelFling();
+        try {
+            rfInstanceRef.current?.setCenter?.(rect.x + rect.w / 2, rect.y + rect.h / 2, {
+                // Never zoom the user OUT to reach a result, but do come in close
+                // enough that a revealed file renders its code rather than a
+                // placeholder (see VISIBLE_ZOOM_THRESHOLD).
+                zoom: Math.max(viewportRef.current.zoom, 0.7),
+                duration: 400,
+            });
+        } catch { }
+    }, []);
+
+    function selectAndFocus(id: string, source: Node[]) {
+        centerOnNode(id, source);
+        setSelectedIds([id]);
+        focusNodesForId(id);
+    }
+
+    function consumePendingReveal(source: Node[]) {
+        const id = pendingRevealRef.current;
+        if (!id) return;
+        if (!source.some(n => n.id === id)) return;   // still not projected
+        pendingRevealRef.current = null;
+        selectAndFocus(id, source);
+    }
+
+    /**
+     * Bring a search hit onto the canvas and centre it.
+     *
+     * A hit can be anywhere in the full model: buried in a collapsed folder, or
+     * hidden with Delete. Both are cleared along the node's ancestor chain first,
+     * otherwise there would be nothing on the canvas to centre on.
+     */
+    function revealNode(id: string) {
+        const currentModel = modelRef.current;
+        const node = currentModel.nodes.get(id);
+        if (!node) return;
+
+        const nextHidden = unhideChain(currentModel, hiddenRef.current, id);
+        // Expand the ANCESTORS, not the node: a folder hit should arrive as a
+        // readable chip, not as a container blown open to its contents.
+        const nextExpanded = node.parentId
+            ? expandWithAncestors(currentModel, expandedRef.current, node.parentId)
+            : expandedRef.current;
+
+        const changed = nextExpanded.size !== expandedRef.current.size
+            || nextHidden.size !== hiddenRef.current.size;
+
+        if (!changed) {
+            selectAndFocus(id, nodesRef.current);
+            return;
+        }
+        if (nextHidden.size !== hiddenRef.current.size) setHidden(nextHidden);
+        if (nextExpanded.size !== expandedRef.current.size) setExpanded(nextExpanded);
+        pendingRevealRef.current = id;
+    }
+
+    // Same ref indirection as `onTokenClick`: the callback identity stays stable
+    // (so `SearchBox` is not re-rendered on every canvas change) while the body
+    // it runs is always the current render's.
+    const revealRef = useRef(revealNode);
+    revealRef.current = revealNode;
+    const onPickSearchHit = useCallback((hit: SearchHit) => revealRef.current(hit.id), []);
+
+    // `/` and Ctrl/Cmd+F jump to the search box, the way every other code tool
+    // in the editor behaves.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (isTypingTarget(e.target)) return;
+            const isFind = (e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F');
+            if (!isFind && e.key !== '/') return;
+            e.preventDefault();
+            searchBoxRef.current?.focus();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const dimmedIds = useMemo(() => {
-        if (activeTagFilters.length === 0) return new Set<string>();
+        const tagFiltering = activeTagFilters.length > 0;
+        if (!tagFiltering && !searchMatchIds) return new Set<string>();
         return new Set(
             nodes
                 .filter((node: any) => {
+                    if (searchMatchIds && !searchMatchIds.has(node.id)) return true;
+                    if (!tagFiltering) return false;
                     const filePath = node.data?.path;
                     const tags = filePath ? (files[filePath]?.tags ?? []) : [];
                     if (tagFilterMode === 'OR') return !activeTagFilters.some((t) => tags.includes(t));
@@ -769,7 +917,7 @@ export default function App() {
                 })
                 .map((n: any) => n.id)
         );
-    }, [nodes, activeTagFilters, tagFilterMode, files]);
+    }, [nodes, activeTagFilters, tagFilterMode, files, searchMatchIds]);
 
     const displayNodes = useMemo(() => {
         const dimming = dimmedIds.size > 0 || !!focusIds;
@@ -809,6 +957,16 @@ export default function App() {
     return (
         <div className="root">
             <div className="toolbar">
+                <SearchBox
+                    ref={searchBoxRef}
+                    query={searchQuery}
+                    onQueryChange={setSearchQuery}
+                    hits={searchHits}
+                    totalMatches={searchMatches.length}
+                    onPick={onPickSearchHit}
+                    filterOn={searchFilterOn}
+                    onToggleFilter={() => setSearchFilterOn(v => !v)}
+                />
                 <TagFilterToolbar />
                 <button onClick={() => runLayout()}>Relayout</button>
                 <button onClick={expandAllTopLevel}>{expandLabel}</button>

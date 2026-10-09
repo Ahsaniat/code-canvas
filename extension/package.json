@@ -4,6 +4,10 @@
     "publisher": "code-canvas",
     "version": "0.0.1",
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Ahsaniat/code-canvas"
+    },
     "engines": {
         "vscode": "^1.102.0"
     },
@@ -133,7 +137,7 @@
                         "**/logs/**",
                         "**/.git/**"
                     ],
-                    "description": "Extra glob patterns to exclude from indexing."
+                    "description": "Glob patterns excluded from indexing. Setting this REPLACES the default list rather than adding to it."
                 },
                 "codeCanvas.maxPreviewBytes": {
                     "type": "number",
@@ -159,7 +163,6 @@
         "@types/vscode": "^1.102.0",
         "@vscode/vsce": "^3.6.0",
         "fast-glob": "^3.3.2",
-        "minimatch": "^9.0.5",
         "tsup": "^8.5.0",
         "typescript": "^5.6"
     }

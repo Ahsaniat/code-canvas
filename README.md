@@ -9,6 +9,7 @@ The canvas is **collapse-first**: folders open as compact chips carrying the agg
 - **Expand on demand** - open a folder to reveal its files and subfolders; edges re-anchor to the specific file
 - **Radial layout** - connected nodes on concentric rings, unconnected files in the centre
 - **Circuit-style edges** - orthogonal wires that route *around* nodes, not through them
+- **Search everything** - find a node by name, path, exported symbol or tag, even inside a collapsed folder, and jump straight to it
 - **Symbols on hover** - a wire tells you which functions, classes and types cross that boundary
 - **Automatic descriptions** - every file and folder is described from its doc comment, exports and imports; your own text always wins
 - **Inline code previews** - syntax-highlighted, scrollable, click a token to jump to its definition
@@ -22,7 +23,7 @@ I have forked it from wallxack and fixed all known bugs. There maybe unknown bug
 
 
 ## Requirements
-- Node.js 18+ (Vite 7 requires Node 18 or newer)
+- Node.js 20.19+ (Vite 7 requires Node 20.19 or newer)
 - VS Code 1.102+ (as per extension engine)
 - Git (optional but recommended; used to detect changed files)
 
@@ -79,6 +80,7 @@ Open the canvas:
 - Command Palette → “Code Canvas: Open”
 
 Toolbar (in the webview):
+- Search box — find nodes by name, path, export or tag (see below)
 - Layout selector — Radial / ELK / Dagre / Force
 - Relayout — recompute the current layout
 - Expand (E) — grow the graph from the selected nodes
@@ -88,6 +90,14 @@ Toolbar (in the webview):
 - Restore Hidden — bring back nodes removed with Delete
 - Refs (R) — toggle the references panel
 - Wrap/Unwrap — toggle code wrapping in previews
+
+Search:
+- Press `/` or `Ctrl/Cmd+F` to jump to the search box
+- Plain text searches every field; `name:`, `path:`, `sym:` and `tag:` narrow it to one
+- `↑`/`↓` move through results, `Enter` reveals the active one, `Esc` closes the list
+- Revealing expands whatever collapsed folders were hiding the result and centres on it
+- **Filter** dims everything that doesn't match — folders containing a match stay lit
+- Search covers the whole indexed tree, not just what's currently drawn
 
 Interaction tips:
 - Click the chevron on a folder (or double-click it) to expand or collapse
@@ -121,6 +131,8 @@ Default keybindings:
 - ⇧+ — Load 25 More
 - ⇧1 / ⇧2 / ⇧3 / ⇧4 — Layout: Radial / Dagre / ELK / Force
 - R — Toggle Refs
+
+In the webview: `/` or ⌘/Ctrl+F focuses search, `E` expands the selection, `Delete` hides it.
 
 All four algorithms are implemented and switch at runtime. Radial is the default.
 
@@ -171,7 +183,7 @@ Only **relative** imports resolve — bare package specifiers are skipped by des
 - Very few edges: your imports probably go through TS `paths` or bundler aliases, which aren’t resolved yet.
 - Code cards won’t scroll: the wheel scrolls a card and zooms the canvas — make sure the pointer is over the code.
 - Webview doesn’t update: If using watch mode, prefer `npx vite build --watch` instead of `vite dev` to feed `extension/media/` where the extension loads assets.
-- Node version errors: Ensure Node 18+.
+- Node version errors: Ensure Node 20.19+.
 - Changed files missing: Verify the Git extension is enabled; otherwise the extension falls back to parsing `git status` output.
 - Performance: Reduce `codeCanvas.maxNodes` and/or widen `codeCanvas.excludeGlobs`. Large files are truncated to `codeCanvas.maxPreviewBytes` for preview.
 

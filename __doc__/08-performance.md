@@ -91,6 +91,17 @@ The webview bundle is ~1.8 MB minified (~590 kB gzipped). It was 11 MB when
 `minify: false` and an inline sourcemap were in effect. Sourcemaps are emitted as
 separate files and excluded from the VSIX via `.vscodeignore`.
 
+## 10. Search is pre-lowercased and deferred
+
+`buildSearchIndex` runs once per model change and stores lowercased copies of
+every label, path and symbol, so a keystroke costs only `indexOf` calls — no tree
+walk, no re-lowercasing. Ranking runs behind `useDeferredValue`, which keeps the
+input responsive without a hand-rolled debounce.
+
+Measured on a 69-node model: index build 0.6 ms, worst-case single-letter query
+0.09 ms. The result list is capped at 40; the filter set is not, because dimming
+needs every match.
+
 ## Performance floors
 
 | Guard | Threshold |

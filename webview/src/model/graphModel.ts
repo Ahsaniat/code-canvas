@@ -22,6 +22,8 @@ export interface RawNode {
     path?: string;
     lang?: string;
     parentId?: string;
+    /** Top-level exported names, on files only. Search reads these. */
+    symbols?: string[];
 }
 
 export interface RawEdgeLink {
@@ -51,6 +53,8 @@ export interface ModelNode {
     childIds: string[];
     /** Number of file descendants (a folder's own weight in the tree). */
     fileCount: number;
+    /** Top-level exported names, on files only. Search reads these. */
+    symbols: string[];
 }
 
 export interface GraphModel {
@@ -82,6 +86,7 @@ export function buildModel(rawNodes: RawNode[], rawEdges: RawEdge[]): GraphModel
             parentId: n.parentId,
             childIds: [],
             fileCount: 0,
+            symbols: n.symbols ?? [],
         });
     }
 
@@ -352,7 +357,7 @@ function projectEdges(
         if (!a || !b || a === b) continue;              // dropped or self-loop
         if (!visibleIds.has(a) || !visibleIds.has(b)) continue;
 
-        const key = `${a} ${b}`;
+        const key = `${a}\u0000${b}`;
         let projected = byKey.get(key);
         if (!projected) {
             projected = {
@@ -368,7 +373,7 @@ function projectEdges(
 
         const srcNode = model.nodes.get(e.source);
         const tgtNode = model.nodes.get(e.target);
-        const pairKey = `${e.source} ${e.target}`;
+        const pairKey = `${e.source}\u0000${e.target}`;
         const pairs = seenPairs.get(key)!;
         if (pairs.has(pairKey)) continue;
         pairs.add(pairKey);
@@ -426,6 +431,24 @@ export function expandWithAncestors(model: GraphModel, expanded: ReadonlySet<str
     while (cur && guard++ < 10000) {
         next.add(cur);
         if (displayRootSet.has(cur)) break;
+        cur = model.nodes.get(cur)?.parentId;
+    }
+    return next;
+}
+
+/**
+ * Un-hide a node and every ancestor of it.
+ *
+ * `hidden` cuts a whole subtree out of the projection, so clearing the node
+ * alone would leave it inside a branch the walk never reaches. Search reveal
+ * needs the full chain back.
+ */
+export function unhideChain(model: GraphModel, hidden: ReadonlySet<string>, id: string): Set<string> {
+    const next = new Set(hidden);
+    let cur: string | undefined = id;
+    let guard = 0;
+    while (cur && guard++ < 10000) {
+        next.delete(cur);
         cur = model.nodes.get(cur)?.parentId;
     }
     return next;
