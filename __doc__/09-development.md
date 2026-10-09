@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 18+ (Vite 7)
+- Node.js 20.19+ (Vite 7 requires Node 20.19 or newer)
 - VS Code 1.102+ (extension engine)
 - Git (optional; used for changed-file detection)
 

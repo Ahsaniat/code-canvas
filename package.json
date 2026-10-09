@@ -12,6 +12,9 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "type": "commonjs",
   "workspaces": [
     "webview",

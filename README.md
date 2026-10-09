@@ -23,7 +23,7 @@ I have forked it from wallxack and fixed all known bugs. There maybe unknown bug
 
 
 ## Requirements
-- Node.js 18+ (Vite 7 requires Node 18 or newer)
+- Node.js 20.19+ (Vite 7 requires Node 20.19 or newer)
 - VS Code 1.102+ (as per extension engine)
 - Git (optional but recommended; used to detect changed files)
 
@@ -183,7 +183,7 @@ Only **relative** imports resolve — bare package specifiers are skipped by des
 - Very few edges: your imports probably go through TS `paths` or bundler aliases, which aren’t resolved yet.
 - Code cards won’t scroll: the wheel scrolls a card and zooms the canvas — make sure the pointer is over the code.
 - Webview doesn’t update: If using watch mode, prefer `npx vite build --watch` instead of `vite dev` to feed `extension/media/` where the extension loads assets.
-- Node version errors: Ensure Node 18+.
+- Node version errors: Ensure Node 20.19+.
 - Changed files missing: Verify the Git extension is enabled; otherwise the extension falls back to parsing `git status` output.
 - Performance: Reduce `codeCanvas.maxNodes` and/or widen `codeCanvas.excludeGlobs`. Large files are truncated to `codeCanvas.maxPreviewBytes` for preview.
 
