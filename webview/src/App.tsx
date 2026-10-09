@@ -14,6 +14,7 @@ import { useMetaStore } from './store/metaStore';
 import { TagFilterToolbar } from './components/TagFilterToolbar';
 import { SearchBox, SearchBoxHandle } from './components/SearchBox';
 import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
+import * as log from './log';
 
 // VS Code webview API
 declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string>; vscode?: any; } }
@@ -532,7 +533,7 @@ export default function App() {
             }
             return merged;
         } catch (err) {
-            console.warn('[code-canvas] edge routing failed, keeping previous paths:', err);
+            log.warn('edge routing failed, keeping previous paths:', err);
             return edgeList;
         }
     }
@@ -570,7 +571,7 @@ export default function App() {
             // A search hit that needed an expansion only has a real position now.
             consumePendingReveal(ordered);
         } catch (error) {
-            console.warn('[code-canvas] layout failed:', error);
+            log.warn('layout failed:', error);
         }
     }
 

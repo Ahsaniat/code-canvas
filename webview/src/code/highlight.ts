@@ -3,6 +3,7 @@ import ts from 'highlight.js/lib/languages/typescript';
 import js from 'highlight.js/lib/languages/javascript';
 import py from 'highlight.js/lib/languages/python';
 import plaintext from 'highlight.js/lib/languages/plaintext';
+import * as log from '../log';
 
 hljs.registerLanguage('typescript', ts);
 hljs.registerLanguage('javascript', js);
@@ -29,7 +30,7 @@ export function highlight(code: string, lang: 'ts' | 'js' | 'py' | 'other') {
             return hljs.highlight(code, { language: mapped, ignoreIllegals: true }).value;
         } catch (e) {
             // This catch block will run if highlighting fails catastrophically.
-            console.error(`Highlighting failed for language "${mapped}"`, e);
+            log.error(`highlighting failed for language "${mapped}"`, e);
         }
     }
 
@@ -38,7 +39,7 @@ export function highlight(code: string, lang: 'ts' | 'js' | 'py' | 'other') {
     try {
         return hljs.highlightAuto(code).value;
     } catch (e) {
-        console.error('Auto-highlighting failed', e);
+        log.error('auto-highlighting failed', e);
         // 4. As a last resort, return the code escaped to prevent breaking HTML.
         return code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
