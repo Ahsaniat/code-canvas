@@ -1,10 +1,19 @@
 **
-!dist/**
-!media/**
+!dist/extension.js
+!dist/extension.d.ts
 !package.json
 !README.md
 !LICENSE
 
-# Source maps are build artifacts only; keep them out of the packaged VSIX.
-media/**/*.map
-dist/**/*.map
+# vsce gives EVERY negated (!) pattern precedence over every ignore pattern,
+# regardless of order, so "!media/**" would force *.map files back in even
+# though a later "media/**/*.map" asks for their exclusion. The webview
+# bundle is therefore allowlisted by the asset types the build actually
+# emits; add a line here if a future build introduces a new asset type.
+!media/index.html
+!media/assets/*.js
+!media/assets/*.css
+!media/assets/*.woff
+!media/assets/*.woff2
+!media/assets/*.svg
+!media/assets/*.png
