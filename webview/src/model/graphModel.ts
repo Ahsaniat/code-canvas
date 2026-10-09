@@ -357,7 +357,7 @@ function projectEdges(
         if (!a || !b || a === b) continue;              // dropped or self-loop
         if (!visibleIds.has(a) || !visibleIds.has(b)) continue;
 
-        const key = `${a} ${b}`;
+        const key = `${a}\u0000${b}`;
         let projected = byKey.get(key);
         if (!projected) {
             projected = {
@@ -373,7 +373,7 @@ function projectEdges(
 
         const srcNode = model.nodes.get(e.source);
         const tgtNode = model.nodes.get(e.target);
-        const pairKey = `${e.source} ${e.target}`;
+        const pairKey = `${e.source}\u0000${e.target}`;
         const pairs = seenPairs.get(key)!;
         if (pairs.has(pairKey)) continue;
         pairs.add(pairKey);

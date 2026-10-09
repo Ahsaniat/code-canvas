@@ -157,7 +157,6 @@ console.log(p.nodes.length, p.edges.length);
 | Everything sits in the centre | Projection has no edges; see [03](03-graph-model.md) |
 | Layout is Dagre when ELK was chosen | ELK worker failed to load — check the CSP allows `worker-src blob:` |
 | Code cards won't scroll | The scroll container lost its `nowheel` class; React Flow is eating the wheel event |
-| `grep` finds nothing in `graphModel.ts` | The file contains literal NUL bytes used as map-key delimiters, so `grep` treats it as binary. Use `grep -a`. |
 | A search hit does nothing when picked | It resolved to a node outside `displayRoots` (the elided root wrapper). `buildSearchIndex` walks down from `displayRoots` precisely to exclude those. |
 | Typing in search expands nodes or pans the canvas | A global key handler is missing its `isTypingTarget` guard. |
 
