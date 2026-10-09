@@ -18,7 +18,6 @@ interface MetaStore {
 
   hydrate: (meta: MetaFile) => void;
   applyAutoDescriptions: (entries: AutoDescriptions) => void;
-  getFileMeta: (filePath: string) => FileMeta;
 
   setDescription: (filePath: string, description: string) => void;
   setDescriptionExpanded: (filePath: string, expanded: boolean) => void;
@@ -29,7 +28,6 @@ interface MetaStore {
   toggleTagFilter: (tag: string) => void;
   setTagFilterMode: (mode: 'OR' | 'AND') => void;
   clearTagFilters: () => void;
-  getAllTags: () => string[];
 }
 
 export const useMetaStore = create<MetaStore>((set, get) => ({
@@ -57,8 +55,6 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
     }
     return changed ? { files } : {};
   }),
-
-  getFileMeta: (filePath) => get().files[filePath] ?? {},
 
   // Internal helper: patch and persist
   _patch(filePath: string, patch: Partial<FileMeta>) {
@@ -100,10 +96,4 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
 
   setTagFilterMode: (tagFilterMode) => set({ tagFilterMode }),
   clearTagFilters: () => set({ activeTagFilters: [] }),
-
-  getAllTags: () => {
-    const all = new Set<string>();
-    Object.values(get().files).forEach((f) => f.tags?.forEach((t) => all.add(t)));
-    return Array.from(all).sort();
-  },
 }));
