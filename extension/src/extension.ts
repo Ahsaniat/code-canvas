@@ -89,16 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand('codeCanvas.loadMore', async () => {
             await ensurePanel(context);
-            if (!lastSeeds.length) return;
-            const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (root && !idxPromise) idxPromise = buildIndex(root);
-            const index = await idxPromise;
-            if (!index) return;
-            const maxNodes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxNodes') ?? 300;
-            const nextCap = Math.min(maxNodes, lastCap + 25);
-            lastCap = nextCap;
-            const g: Graph = await subgraph(index, lastSeeds, nextCap);
-            await publishGraph(index, g);
+            await loadMoreGraph();
         })
     );
 
@@ -158,15 +149,7 @@ function openPanel(context: vscode.ExtensionContext) {
             case 'requestGraph': await sendInitial(ws); break;
             case 'expand': await sendExpansion(msg.ids || []); break;
             case 'loadMore': {
-                const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (root && !idxPromise) idxPromise = buildIndex(root);
-                const index = await idxPromise;
-                if (!index || !lastSeeds.length) break;
-                const maxNodes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxNodes') ?? 300;
-                const nextCap = Math.min(maxNodes, lastCap + 25);
-                lastCap = nextCap;
-                const g: Graph = await subgraph(index, lastSeeds, nextCap);
-                await publishGraph(index, g);
+                await loadMoreGraph();
                 break;
             }
             case 'seedFolder': {
@@ -285,6 +268,20 @@ async function sendExpansion(ids: string[]) {
     if (!index) return;
     const g: Graph = await subgraph(index, ids, maxNodes);
     await publishGraph(index, g, 'expandResult');
+}
+
+/** Raise the node cap by 25 and re-publish. Shared by the command and the webview message. */
+async function loadMoreGraph(): Promise<void> {
+    if (!lastSeeds.length) return;
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (root && !idxPromise) idxPromise = buildIndex(root);
+    const index = await idxPromise;
+    if (!index) return;
+    const maxNodes: number = vscode.workspace.getConfiguration('codeCanvas').get('maxNodes') ?? 300;
+    const nextCap = Math.min(maxNodes, lastCap + 25);
+    lastCap = nextCap;
+    const g: Graph = await subgraph(index, lastSeeds, nextCap);
+    await publishGraph(index, g);
 }
 
 export function deactivate() { }
