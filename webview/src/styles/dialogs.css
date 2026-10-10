@@ -1,0 +1,319 @@
+/* Split from the original styles.css. Import order matters (tokens, nodes, panels, dialogs) - main.tsx owns it. */
+
+/* ── Search box ── */
+.search-box {
+    position: relative;
+    /* Own stacking context above the rest of the toolbar so the result list is
+       not clipped by, or painted under, the buttons beside it. */
+    z-index: 20;
+}
+
+.search-input-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0 6px;
+}
+
+.search-input-row:focus-within {
+    border-color: var(--wire-hairline);
+}
+
+.search-icon {
+    font-size: 13px;
+    opacity: 0.6;
+    padding-left: 2px;
+}
+
+.search-input {
+    width: 210px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    padding: 6px 2px;
+}
+
+.search-input::placeholder {
+    color: var(--text-faint);
+}
+
+.toolbar .search-clear,
+.toolbar .search-filter-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.toolbar .search-clear:hover,
+.toolbar .search-filter-toggle:hover {
+    border-color: var(--wire-faint);
+    color: var(--text-primary);
+}
+
+.toolbar .search-filter-toggle--active {
+    background: var(--tint-14);
+    border-color: var(--wire-hairline);
+    color: var(--text-strong);
+}
+
+.search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    width: 320px;
+    max-height: 46vh;
+    overflow-y: auto;
+    background: var(--surface-raised);
+    border: 1px solid var(--wire-faint);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--shadow-strong);
+    padding: 4px;
+}
+
+.toolbar .search-hit {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 5px 7px;
+    font-size: 12px;
+    color: var(--text-body);
+}
+
+.toolbar .search-hit--active {
+    background: var(--tint-10);
+    border-color: var(--wire-hairline);
+}
+
+.search-hit-kind {
+    opacity: 0.55;
+    font-size: 10px;
+}
+
+.search-hit-label {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.search-hit-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.search-hit-field {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.45;
+}
+
+.search-empty,
+.search-more {
+    padding: 7px 8px;
+    font-size: 11px;
+    opacity: 0.55;
+}
+
+/* ── Tag filter toolbar ── */
+.tag-filter-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.tag-filter-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+}
+
+.tag-filter-pill {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--wire-faint);
+    background: transparent;
+    color: var(--vscode-foreground, var(--text-primary));
+    cursor: pointer;
+}
+
+.tag-filter-pill--active {
+    background: var(--tint-14);
+    color: var(--text-strong);
+    border-color: var(--wire-hairline);
+}
+
+.tag-filter-mode {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--wire-hairline);
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.tag-filter-clear {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-errorForeground, var(--status-error));
+    background: transparent;
+    color: var(--vscode-errorForeground, var(--status-error));
+    cursor: pointer;
+}
+
+/* ── References panel (P1-5) ── */
+.refs-panel {
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    width: 280px;
+    max-height: 40vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--overlay-soft);
+    border: 1px solid var(--wire-hairline);
+    border-radius: 8px;
+    z-index: 2147483646;
+    overflow: hidden;
+    box-shadow: 0 6px 24px var(--shadow);
+}
+
+.refs-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--tint-08);
+}
+
+.refs-panel-header button {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.refs-panel-header button:hover {
+    color: var(--text-strong);
+}
+
+.refs-panel-list {
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.refs-panel-empty {
+    padding: 8px 10px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+}
+
+.refs-panel-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text-body);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.refs-panel-item:hover {
+    background: var(--tint-12);
+}
+
+/* One-line description shown while the panel is collapsed. Clipped to a single
+   row so a long first sentence can never grow the node. */
+.description-summary {
+    margin: 0;
+    padding: 2px 10px 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.description-summary.description-auto {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.description-more {
+    opacity: 0.6;
+}
+
+/* Fallback shown when a node/edge render throws (CanvasErrorBoundary). */
+.canvas-error {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 10px;
+    justify-items: center;
+    padding: 24px;
+    text-align: center;
+    background: var(--surface);
+    color: var(--text-primary);
+}
+
+.canvas-error-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.canvas-error-detail {
+    max-width: 640px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.canvas-error button {
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
