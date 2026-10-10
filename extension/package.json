@@ -1,18 +1,36 @@
 {
     "name": "code-canvas",
     "displayName": "Code Canvas",
+    "description": "Interactive canvas for your codebase: a file and folder graph with inline code previews, search, descriptions and resizable nodes.",
     "publisher": "code-canvas",
     "version": "0.2.0",
     "license": "MIT",
+    "icon": "icon.png",
     "repository": {
         "type": "git",
         "url": "https://github.com/Ahsaniat/code-canvas"
+    },
+    "homepage": "https://github.com/Ahsaniat/code-canvas#readme",
+    "bugs": {
+        "url": "https://github.com/Ahsaniat/code-canvas/issues"
+    },
+    "galleryBanner": {
+        "color": "#0b0e12",
+        "theme": "dark"
     },
     "engines": {
         "vscode": "^1.102.0"
     },
     "categories": [
+        "Visualization",
         "Other"
+    ],
+    "keywords": [
+        "code visualization",
+        "dependency graph",
+        "architecture",
+        "codebase",
+        "canvas"
     ],
     "activationEvents": [
         "onCommand:codeCanvas.open",

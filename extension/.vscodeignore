@@ -3,7 +3,10 @@
 !dist/extension.d.ts
 !package.json
 !README.md
+!CHANGELOG.md
+!SUPPORT.md
 !LICENSE
+!icon.png
 
 # vsce gives EVERY negated (!) pattern precedence over every ignore pattern,
 # regardless of order, so "!media/**" would force *.map files back in even
