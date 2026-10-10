@@ -21,7 +21,7 @@ import * as log from './log';
 declare global { interface Window { acquireVsCodeApi: any; __CODE_CACHE?: Record<string, string>; vscode?: any; } }
 const vscode = window.vscode || (window.vscode = window.acquireVsCodeApi?.());
 
-type Node = { id: string; type?: 'file' | 'folder' | 'group'; position: { x: number; y: number }; data: any; style?: any; dragHandle?: string; parentId?: string; width?: number; height?: number; extent?: any; zIndex?: number; className?: string };
+type Node = { id: string; type?: 'file' | 'folder' | 'group'; position: { x: number; y: number }; data: any; style?: any; dragHandle?: string; parentId?: string; width?: number; height?: number; measured?: { width?: number; height?: number }; extent?: any; zIndex?: number; className?: string };
 
 // A collapsed folder is a fixed-size chip: deterministic geometry means the
 // layout can space siblings using the exact size that will be painted.
@@ -30,7 +30,7 @@ const FOLDER_H = 168;
 const GROUP_SEED_W = 320;
 const GROUP_SEED_H = 200;
 
-// React Flow v11 REQUIRES every parent node to appear BEFORE its children in the
+// React Flow REQUIRES every parent node to appear BEFORE its children in the
 // nodes array, otherwise children detach / mis-position (P0-1). Sort by hierarchy
 // depth (ascending) with a stable tiebreak so a parent always precedes its
 // descendants regardless of the order we assembled the array in.
@@ -97,8 +97,8 @@ function absoluteRects(nodes: Node[]): { rectById: Map<string, Rect>; obstacles:
     const obstacles: Rect[] = [];
     for (const n of nodes) {
         const parent = n.parentId ? rectById.get(n.parentId) : undefined;
-        const w = n.style?.width ?? (n.type === 'group' ? GROUP_SEED_W : FOLDER_W);
-        const h = n.style?.height ?? (n.type === 'group' ? GROUP_SEED_H : FOLDER_H);
+        const w = n.width ?? n.measured?.width ?? n.style?.width ?? (n.type === 'group' ? GROUP_SEED_W : FOLDER_W);
+        const h = n.height ?? n.measured?.height ?? n.style?.height ?? (n.type === 'group' ? GROUP_SEED_H : FOLDER_H);
         const rect: Rect = {
             id: n.id,
             x: (parent?.x ?? 0) + (n.position?.x ?? 0),
@@ -342,6 +342,15 @@ export default function App() {
                 setRefResults({ at: msg.at, refs: msg.refs || [] });
             } else if (msg.type === 'metaLoaded') {
                 useMetaStore.getState().hydrate(msg.payload);
+                // Persisted NodeResizer sizes live in the store: apply them to
+                // the node array and re-place once.
+                if (nodesRef.current.length) {
+                    nodesRef.current = nodesRef.current.map(n => n.type === 'file'
+                        ? { ...n, ...fileSizeFor((n.data as any).path) }
+                        : n);
+                    setNodes(nodesRef.current);
+                    scheduleLayout(60);
+                }
             } else if (msg.type === 'autoDescriptions') {
                 useMetaStore.getState().applyAutoDescriptions(msg.entries || {});
             }
@@ -367,11 +376,21 @@ export default function App() {
     // Projection -> React Flow
     // -----------------------------------------------------------------------
 
+    /**
+     * The one size source for a file node. A user-set size (NodeResizer) wins;
+     * otherwise the size is derived from the file content.
+     */
+    const fileSizeFor = useCallback((path: string) => {
+        const meta = useMetaStore.getState().files[path];
+        if (meta?.width && meta?.height) return { width: meta.width, height: meta.height };
+        return computeStyleFromContent(codeCacheRef.current[path] || '');
+    }, []);
+
     const sizeOfProjected = useCallback((n: ProjectedNode) => {
-        if (n.kind === 'file') return computeStyleFromContent(codeCacheRef.current[n.path ?? ''] || '');
+        if (n.kind === 'file') return fileSizeFor(n.path ?? '');
         if (n.kind === 'folder') return { width: FOLDER_W, height: FOLDER_H };
         return { width: GROUP_SEED_W, height: GROUP_SEED_H };
-    }, []);
+    }, [fileSizeFor]);
 
     const toRfNode = useCallback((n: ProjectedNode, previous?: Node): Node => {
         const size = sizeOfProjected(n);
@@ -396,7 +415,10 @@ export default function App() {
             data: n.kind === 'file'
                 ? { label: n.label, path: n.path, lang: n.lang }
                 : folderData,
-            style: size,
+            // v12 stores explicit dimensions on the node, not in style; this is
+            // also what NodeResizer updates via dimension changes.
+            width: size.width,
+            height: size.height,
             zIndex: n.kind === 'group' ? 0 : 1,
         };
     }, [sizeOfProjected]);
@@ -458,7 +480,7 @@ export default function App() {
         // the geometry changed: relayout once, debounced, never per file.
         if (any && pendingCodePathsRef.current.size === 0) {
             nodesRef.current = nodesRef.current.map(n => n.type === 'file'
-                ? { ...n, style: computeStyleFromContent(codeCacheRef.current[(n.data as any).path] || '') }
+                ? { ...n, ...fileSizeFor((n.data as any).path) }
                 : n);
             setNodes(nodesRef.current);
             scheduleLayout(120);
@@ -561,8 +583,8 @@ export default function App() {
         const token = ++layoutTokenRef.current;
         const nodesToLayout = source.map(n => ({
             ...n,
-            width: n.style?.width ?? FOLDER_W,
-            height: n.style?.height ?? FOLDER_H,
+            width: n.width ?? n.measured?.width ?? n.style?.width ?? FOLDER_W,
+            height: n.height ?? n.measured?.height ?? n.style?.height ?? FOLDER_H,
         }));
         try {
             const layouted = await getLayoutedElements(nodesToLayout as any, edgesRef.current, algoOverride ?? algoRef.current);
@@ -787,11 +809,23 @@ export default function App() {
         overlayRef.current?.showEdge(null);
     }
 
+    /**
+     * NodeResizer finished: persist the user-set size and re-place once so
+     * neighbours make room for it. Identity must stay stable — it is part of
+     * the canvas context, and a changing value would re-render every node.
+     */
+    const resizeFile = useCallback((path: string, width: number, height: number) => {
+        useMetaStore.getState().setNodeSize(path, Math.round(width), Math.round(height));
+        scheduleLayout(80);
+        // scheduleLayout only reads refs, so the first-render closure is fine.
+    }, []);
+
     const canvasCtx = useMemo<CanvasContextValue>(() => ({
         zoomOk, wrap,
         codeCacheRef, truncatedCacheRef, codeRefs,
         onTokenClick, onOpenFile: openFileByPath, onToggleFolder: toggleFolder,
-    }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder]);
+        onResizeFile: resizeFile,
+    }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder, resizeFile]);
 
     // P1-2: selective store subscriptions rather than the whole store.
     const activeTagFilters = useMetaStore(s => s.activeTagFilters);

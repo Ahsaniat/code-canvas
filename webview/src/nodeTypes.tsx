@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect } from 'react';
-import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { Handle, Position, NodeProps, NodeResizer, useUpdateNodeInternals } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
 import CodeCard, { CodeCardHandle } from './code/CodeCard';
 import { DescriptionPanel } from './components/DescriptionPanel';
@@ -50,6 +50,8 @@ export interface CanvasContextValue {
     onTokenClick: (payload: { path: string; line: number; character: number; token: string }) => void;
     onOpenFile: (path: string) => void;
     onToggleFolder: (id: string) => void;
+    /** Persist a user-resized file node size and re-lay out. */
+    onResizeFile: (path: string, width: number, height: number) => void;
 }
 
 export const CanvasContext = createContext<CanvasContextValue | null>(null);
@@ -113,7 +115,17 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
     }, [collapsed, descriptionExpanded, p.id, updateNodeInternals]);
 
     return (
-        <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: data.dim ? 0.25 : 1 }}>
+        <>
+            {/* Sibling of the card: `.file-node` has overflow hidden, which
+                would clip the resize handles at the node edges. */}
+            <NodeResizer
+                minWidth={260}
+                minHeight={140}
+                isVisible={p.selected}
+                color="rgba(255, 255, 255, 0.45)"
+                onResizeEnd={(_event, params) => ctx.onResizeFile(path, params.width, params.height)}
+            />
+            <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: data.dim ? 0.25 : 1 }}>
             <div className="file-node-header label-fixed code-card-header" onDoubleClick={() => ctx.onOpenFile(path)}>
                 <span className="code-card-filename">{data.label}</span>
                 <button
@@ -150,6 +162,7 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
             <Handle type="source" position={Position.Right} />
             <Handle type="target" position={Position.Left} />
         </div>
+        </>
     );
 }
 

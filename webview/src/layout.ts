@@ -125,10 +125,11 @@ function toDirectChild(parentOf: Map<string, string | undefined>, container: str
 // ---------------------------------------------------------------------------
 // Assemble the final React Flow node array.
 //
-// Child positions are relative to their parent (v11 requirement); top-level
-// nodes are relative to the canvas. Style width/height is written for EVERY
-// node from the exact same size source the layout used, so nothing can drift
-// between what was spaced and what is painted.
+// Child positions are relative to their parent (React Flow requirement);
+// top-level nodes are relative to the canvas. Explicit width/height is written
+// for EVERY node from the exact same size source the layout used, so nothing
+// can drift between what was spaced and what is painted. (v12 stores explicit
+// dimensions on the node; NodeResizer updates these same attributes.)
 // ---------------------------------------------------------------------------
 
 function assemble(nodes: Node[], relPos: Map<string, Pt>, sizeOf: (id: string) => Box): Node[] {
@@ -138,7 +139,8 @@ function assemble(nodes: Node[], relPos: Map<string, Pt>, sizeOf: (id: string) =
         return {
             ...node,
             position: pos,
-            style: { ...(node as any).style, width: size.w, height: size.h },
+            width: size.w,
+            height: size.h,
         } as Node;
     });
 }

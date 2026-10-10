@@ -166,8 +166,9 @@ console.log(p.nodes.length, p.edges.length);
 - **Module resolution** — relative specifiers only; TS `paths` and bundler
   aliases are not resolved, and bare package imports are skipped by design.
 - **Descriptions** — heuristic, not model-generated.
-- **React Flow v12** — migrated from v11 (`@xyflow/react`); adopting
-  `NodeResizer` and retiring the remaining manual geometry is still open.
+- **React Flow v12** — migrated from v11 (`@xyflow/react`); `NodeResizer` is
+  adopted for file nodes (sizes persist in `.code-canvas/meta.json`). Folder and
+  group containers are still sized by the layout engine.
 
 ## Code conventions
 
