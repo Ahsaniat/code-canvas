@@ -111,8 +111,8 @@ Settings under **Code Canvas**:
 
 ## Known limitations
 
-- JS/TS/JSX/TSX and Python only - no other languages are indexed
-- Only relative imports resolve; TypeScript `paths` and bundler aliases (`@/…`) are not resolved yet
+- JavaScript/TypeScript, Python, Go, Rust, Java and C# are indexed
+- Resolution covers relative imports, TypeScript `paths`/`baseUrl`, Go modules, Rust modules, Java packages and C# namespaces; bare npm package specifiers are skipped by design
 - Descriptions are heuristic, not model-generated
 
 ## Support

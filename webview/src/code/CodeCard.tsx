@@ -1,5 +1,5 @@
 ﻿import React, { useMemo, useRef, useImperativeHandle } from 'react';
-import { highlight } from './highlight';
+import { highlight, type Lang } from './highlight';
 
 export type CodeCardHandle = {
     highlight: (line: number) => void;
@@ -77,7 +77,7 @@ function wrapHighlightedHtmlPreserveLines(highlightedHtml: string): string {
 
 type Props = {
     file: string;
-    lang: 'ts' | 'js' | 'py' | 'other';
+    lang: Lang;
     content: string;
     /** True when the host capped the preview at `codeCanvas.maxPreviewBytes`. */
     truncated?: boolean;
@@ -86,7 +86,7 @@ type Props = {
 };
 
 function CodeCardInner({ file, lang, content, truncated, onTokenClick, wrap }: Props, ref: React.Ref<CodeCardHandle>) {
-    const effectiveLang = useMemo<'ts' | 'js' | 'py' | 'other'>(() => {
+    const effectiveLang = useMemo<Lang>(() => {
         if (lang && lang !== 'other') return lang;
         const lower = (file || '').toLowerCase();
         if (lower.endsWith('.py')) return 'py';

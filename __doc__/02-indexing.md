@@ -6,14 +6,18 @@ All of this runs in the extension host (`extension/src/graph.ts` and
 ## 1. File discovery
 
 ```ts
-const JS_GLOB = ['**/*.{js,jsx,ts,tsx}'];
-const PY_GLOB = ['**/*.py'];
+const JS_GLOB   = ['**/*.{js,jsx,ts,tsx}'];
+const PY_GLOB   = ['**/*.py'];
+const GO_GLOB   = ['**/*.go'];
+const RS_GLOB   = ['**/*.rs'];
+const JAVA_GLOB = ['**/*.java'];
+const CS_GLOB   = ['**/*.cs'];
 ```
 
 Discovery uses `fast-glob` with `codeCanvas.excludeGlobs` as the ignore list.
 
-**Supported languages: JavaScript, TypeScript (incl. JSX/TSX) and Python.**
-Nothing else is parsed. A Go or Rust file is not indexed and will not appear.
+**Supported languages: JavaScript, TypeScript (incl. JSX/TSX), Python, Go,
+Rust, Java and C#.** Nothing else is parsed.
 
 Language tagging collapses variants, which matters for description accuracy:
 
@@ -22,6 +26,10 @@ Language tagging collapses variants, which matters for description accuracy:
 | `.ts`, `.tsx` | `ts` |
 | `.js`, `.jsx` | `js` |
 | `.py` | `py` |
+| `.go` | `go` |
+| `.rs` | `rs` |
+| `.java` | `java` |
+| `.cs` | `cs` |
 | anything else | `other` |
 
 ### Default exclusions
@@ -104,23 +112,36 @@ yields fewer results, never an exception.
 
 ## 3. Module resolution
 
-Only **relative** specifiers resolve. Bare package specifiers (`react`,
-`express`) are skipped by design — the graph is about your code, not your
-dependencies.
+Bare npm package specifiers (`react`, `express`) are skipped by design — the
+graph is about your code, not your dependencies. Everything else resolves:
 
-- **JS/TS** — tries the literal path, then `.ts/.tsx/.js/.jsx` extensions, then
+- **JS/TS** — relative specifiers plus tsconfig `paths`/`baseUrl` from
+  `tsconfig.json`/`jsconfig.json` (longest pattern wins, JSONC comments
+  tolerated). Tries the literal path, then `.ts/.tsx/.js/.jsx` extensions, then
   `index.*` inside a directory.
 - **Python** — resolves dotted modules against the workspace root and relative
   imports against the importing file's package, trying both `mod.py` and
   `mod/__init__.py`.
+- **Go** — relative imports resolve against the importing file; module-path
+  imports resolve against the matching `go.mod` (every module in the workspace
+  is discovered, longest module path first). A package import can point at
+  several files (capped at 8).
+- **Rust** — `mod x;` resolves to `x.rs` / `x/mod.rs` next to (or under) the
+  current module file; `use crate::`/`self::`/`super::` paths are resolved by
+  trying the full path, then progressively shorter module prefixes.
+- **Java** — a first pass maps `package` + file name to fully-qualified types;
+  `import a.b.C` resolves to the declaring file, static imports match their
+  type, and `import a.b.*` links every file in the package (capped at 8).
+- **C#** — a first pass maps `namespace` declarations to files; `using A.B;`
+  links the namespace's files, falling back to parent namespaces.
 
 Resolution probes up to ~9 candidate paths per import, so a per-build
 `existsSync` cache prevents re-stat'ing the same path. The cache is scoped to a
 single build; a later reload probes fresh.
 
-> **Known limitation:** TypeScript `paths` aliases and webpack/Vite aliases
-> (`@/components/...`) are **not** resolved. A codebase that imports exclusively
-> through aliases will index its files but produce few edges.
+> **Note:** Vite/webpack-only aliases (e.g. `vite.config` `resolve.alias`)
+> are not read; tsconfig `paths`/`baseUrl` is. Bare package imports are always
+> skipped.
 
 ## 4. Subgraph selection
 

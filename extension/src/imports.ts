@@ -188,6 +188,135 @@ export function parseJsTsImports(code: string): ImportSpec[] {
 const RE_PY_IMPORT = /^[ \t]*import\s+([^\n#]+)/gm;
 const RE_PY_FROM = /^[ \t]*from\s+([.\w]+)\s+import\s+([^\n#]+)/gm;
 
+// ---------------------------------------------------------------------------
+// Go
+// ---------------------------------------------------------------------------
+
+const RE_GO_IMPORT_SINGLE = /^[ \t]*import[ \t]+(?:([A-Za-z_.]\w*|\.|_)[ \t]+)?["`]([^"`\n]+)["`]/gm;
+const RE_GO_IMPORT_BLOCK = /^[ \t]*import[ \t]*\(([^)]*)\)/gm;
+
+/** `import "x"` and `import ( alias "x" ... )`. Import paths name packages. */
+export function parseGoImports(code: string): ImportSpec[] {
+    const acc = collect();
+    if (!code) return acc.done();
+    try {
+        const starts = buildLineStarts(code);
+        let m: RegExpExecArray | null;
+
+        RE_GO_IMPORT_SINGLE.lastIndex = 0;
+        while ((m = RE_GO_IMPORT_SINGLE.exec(code))) {
+            const alias = m[1];
+            const spec = m[2];
+            const name = alias || spec.split('/').pop() || spec;
+            acc.add(spec, lineAt(starts, m.index), [{ name, kind: 'module' }]);
+        }
+
+        RE_GO_IMPORT_BLOCK.lastIndex = 0;
+        while ((m = RE_GO_IMPORT_BLOCK.exec(code))) {
+            const baseLine = lineAt(starts, m.index);
+            const lines = m[1].split('\n');
+            const lineRe = /(?:([A-Za-z_.]\w*|\.|_)\s+)?"([^"\n]+)"/g;
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].replace(/\/\/.*$/, '');
+                let q: RegExpExecArray | null;
+                lineRe.lastIndex = 0;
+                while ((q = lineRe.exec(line))) {
+                    const alias = q[1];
+                    const spec = q[2];
+                    const name = alias || spec.split('/').pop() || spec;
+                    acc.add(spec, baseLine + i, [{ name, kind: 'module' }]);
+                }
+            }
+        }
+    } catch {
+        // See parseJsTsImports.
+    }
+    return acc.done();
+}
+
+// ---------------------------------------------------------------------------
+// Rust
+// ---------------------------------------------------------------------------
+
+const RE_RS_MOD = /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+([A-Za-z_]\w*)[ \t]*;/gm;
+const RE_RS_USE = /^[ \t]*(?:pub(?:\([^)]*\))?[ \t]+)?use[ \t]+([A-Za-z_][\w:]*)(?:::\{[^}\n]*\})?[ \t]*(?:as[ \t]+\w+)?[ \t]*;/gm;
+
+/**
+ * `mod name;` (a child module file) and `use [crate|self|super]::...;`.
+ * The spec is prefixed so the resolver can tell the two forms apart.
+ */
+export function parseRustImports(code: string): ImportSpec[] {
+    const acc = collect();
+    if (!code) return acc.done();
+    try {
+        const starts = buildLineStarts(code);
+        let m: RegExpExecArray | null;
+
+        RE_RS_MOD.lastIndex = 0;
+        while ((m = RE_RS_MOD.exec(code))) {
+            acc.add(`mod:${m[1]}`, lineAt(starts, m.index), [{ name: m[1], kind: 'module' }]);
+        }
+
+        RE_RS_USE.lastIndex = 0;
+        while ((m = RE_RS_USE.exec(code))) {
+            const raw = m[1].replace(/::$/, '');
+            acc.add(`use:${raw}`, lineAt(starts, m.index), [{ name: raw.split('::').pop() || raw, kind: 'module' }]);
+        }
+    } catch {
+        // See parseJsTsImports.
+    }
+    return acc.done();
+}
+
+// ---------------------------------------------------------------------------
+// Java
+// ---------------------------------------------------------------------------
+
+const RE_JAVA_IMPORT = /^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+(?:\.\*)?)[ \t]*;/gm;
+
+/** `import a.b.C;` / `import a.b.*;` (static imports resolve to their type). */
+export function parseJavaImports(code: string): ImportSpec[] {
+    const acc = collect();
+    if (!code) return acc.done();
+    try {
+        const starts = buildLineStarts(code);
+        let m: RegExpExecArray | null;
+        RE_JAVA_IMPORT.lastIndex = 0;
+        while ((m = RE_JAVA_IMPORT.exec(code))) {
+            const spec = m[1];
+            const name = spec.endsWith('.*') ? '*' : spec.split('.').pop() || spec;
+            acc.add(spec, lineAt(starts, m.index), [{ name, kind: 'named' }]);
+        }
+    } catch {
+        // See parseJsTsImports.
+    }
+    return acc.done();
+}
+
+// ---------------------------------------------------------------------------
+// C#
+// ---------------------------------------------------------------------------
+
+const RE_CS_USING = /^[ \t]*(?:global[ \t]+)?using[ \t]+(?:static[ \t]+)?([A-Za-z_][\w.]*)[ \t]*;/gm;
+
+/** `using X.Y;` / `global using X.Y;` / `using static X.Y;` (aliases are skipped). */
+export function parseCsImports(code: string): ImportSpec[] {
+    const acc = collect();
+    if (!code) return acc.done();
+    try {
+        const starts = buildLineStarts(code);
+        let m: RegExpExecArray | null;
+        RE_CS_USING.lastIndex = 0;
+        while ((m = RE_CS_USING.exec(code))) {
+            const spec = m[1];
+            acc.add(spec, lineAt(starts, m.index), [{ name: spec.split('.').pop() || spec, kind: 'namespace' }]);
+        }
+    } catch {
+        // See parseJsTsImports.
+    }
+    return acc.done();
+}
+
 /**
  * Scan Python source. Covers `import x`, `import x as y`, `import a, b`,
  * `from x import a, b as c` and the parenthesised multi-line form's first line.

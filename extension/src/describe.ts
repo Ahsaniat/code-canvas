@@ -10,13 +10,13 @@
  * summary, never an exception.
  */
 
-export type SourceLang = 'js' | 'ts' | 'py' | 'other';
+export type SourceLang = 'js' | 'ts' | 'py' | 'go' | 'rs' | 'java' | 'cs' | 'other';
 
 const MAX_SUMMARY_CHARS = 240;
 const MAX_LISTED_SYMBOLS = 4;
 
 /** Comment blocks that are legal boilerplate rather than a description. */
-const BOILERPLATE = /\b(copyright|licen[cs]ed?\s+under|SPDX-License-Identifier|all rights reserved|eslint-disable|@ts-nocheck|prettier-ignore)\b/i;
+const BOILERPLATE = /\b(copyright|licen[cs]ed?\s+under|SPDX-License-Identifier|all rights reserved|eslint-disable|@ts-nocheck|prettier-ignore|go:build|\+build)\b/i;
 
 function clamp(text: string): string {
     const flat = text.replace(/\s+/g, ' ').trim();
@@ -124,11 +124,74 @@ function extractPyDocstring(source: string): string | undefined {
     return joined && !BOILERPLATE.test(joined) ? joined : undefined;
 }
 
-/** Leading JSDoc / block comment / Python module docstring, first sentence only. */
+/** Leading `//!` / `///` doc comments of a Rust file. */
+function extractRustDoc(source: string): string | undefined {
+    let i = 0;
+    if (source.startsWith('#!')) {
+        const nl = source.indexOf('\n');
+        i = nl < 0 ? source.length : nl + 1;
+    }
+    const lines: string[] = [];
+    while (i < source.length) {
+        const nl = source.indexOf('\n', i);
+        const line = source.slice(i, nl < 0 ? source.length : nl);
+        const t = line.trim();
+        if (!t) {
+            if (lines.length) break;
+            i = nl + 1;
+            continue;
+        }
+        const m = /^\/\/[!/]\s?(.*)$/.exec(t);
+        if (m) { lines.push(m[1].trim()); i = nl + 1; continue; }
+        if (/^#!?\[/.test(t)) { i = nl + 1; continue; } // crate attributes
+        break;
+    }
+    const body = beforeTags(lines.join(' ').trim());
+    return body && !BOILERPLATE.test(body) ? body : undefined;
+}
+
+/** The Javadoc block immediately before the first type declaration. */
+function extractJavaDoc(source: string): string | undefined {
+    const declIdx = source.search(/\b(?:class|interface|enum|record)\s/);
+    const limit = declIdx >= 0 ? declIdx : Math.min(source.length, 8000);
+    let i = 0;
+    let last: string | undefined;
+    while (i < limit) {
+        const block = source.indexOf('/*', i);
+        if (block < 0 || block >= limit) break;
+        const end = source.indexOf('*/', block + 2);
+        if (end < 0) break;
+        const raw = source.slice(block + (source.startsWith('/**', block) ? 3 : 2), end);
+        const body = beforeTags(stripBlockCommentBody(raw));
+        if (body && !BOILERPLATE.test(body)) last = body;
+        i = end + 2;
+    }
+    return last;
+}
+
+/** The first `/// <summary>…</summary>` XML doc block of a C# file. */
+function extractCsDoc(source: string): string | undefined {
+    const head = source.slice(0, 12000);
+    const m = /\/\/\/\s*<summary>([\s\S]*?)<\/summary>/i.exec(head);
+    if (!m) return undefined;
+    const body = m[1]
+        .replace(/^\s*\/\/\/\s?/gm, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return body && !BOILERPLATE.test(body) ? body : undefined;
+}
+
+/** Leading JSDoc / block comment / module docstring, first sentence only. */
 export function extractDocSummary(source: string, lang: SourceLang): string | undefined {
     try {
         if (!source) return undefined;
-        const body = lang === 'py' ? extractPyDocstring(source) : extractJsDoc(source);
+        const body =
+            lang === 'py' ? extractPyDocstring(source)
+                : lang === 'rs' ? extractRustDoc(source)
+                    : lang === 'java' ? extractJavaDoc(source)
+                        : lang === 'cs' ? extractCsDoc(source)
+                            : extractJsDoc(source);
         if (!body) return undefined;
         const sentence = firstSentence(body);
         return sentence.length >= 12 ? sentence : undefined;
@@ -154,6 +217,14 @@ const RE_IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 const RE_PY_DEF = /^(?:async\s+)?def\s+([A-Za-z_]\w*)/gm;
 const RE_PY_CLASS = /^class\s+([A-Za-z_]\w*)/gm;
 const RE_PY_ALL = /^__all__\s*=\s*[\[(]([^\])]*)[\])]/m;
+// Go: an identifier is exported only when it starts with an upper-case letter.
+const RE_GO_FUNC = /^func\s+(?:\([^)]*\)\s*)?([A-Z]\w*)/gm;
+const RE_GO_TYPE = /^\s*type\s+([A-Z]\w*)/gm;
+const RE_GO_VAR = /^(?:var|const)\s+([A-Z]\w*)[\s=]/gm;
+// Rust: `pub` (in any of its forms) is the export marker.
+const RE_RS_PUB = /^\s*pub(?:\([^)]*\))?\s+(?:(?:async|unsafe|extern\s+"[^"]*")\s+)*(?:fn|struct|enum|trait|type|mod|union|const|static)\s+([A-Za-z_]\w*)/gm;
+const RE_JAVA_PUBLIC_TYPE = /^\s*public\s+(?:final\s+|abstract\s+|sealed\s+|non-sealed\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$]\w*)/gm;
+const RE_CS_PUBLIC_TYPE = /^\s*(?:\[[^\]]*\]\s*)*public\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+|readonly\s+)*(?:class|interface|struct|enum|record)\s+([A-Za-z_]\w*)/gm;
 
 /** Top-level exported symbol names, in source order, deduped. */
 export function extractExportedSymbols(source: string, lang: SourceLang): string[] {
@@ -178,6 +249,34 @@ export function extractExportedSymbols(source: string, lang: SourceLang): string
             while ((m = RE_PY_CLASS.exec(source))) push(m[1]);
             RE_PY_DEF.lastIndex = 0;
             while ((m = RE_PY_DEF.exec(source))) if (!m[1].startsWith('_')) push(m[1]);
+            return out;
+        }
+        if (lang === 'go') {
+            let m: RegExpExecArray | null;
+            RE_GO_FUNC.lastIndex = 0;
+            while ((m = RE_GO_FUNC.exec(source))) push(m[1]);
+            RE_GO_TYPE.lastIndex = 0;
+            while ((m = RE_GO_TYPE.exec(source))) push(m[1]);
+            RE_GO_VAR.lastIndex = 0;
+            while ((m = RE_GO_VAR.exec(source))) push(m[1]);
+            return out;
+        }
+        if (lang === 'rs') {
+            let m: RegExpExecArray | null;
+            RE_RS_PUB.lastIndex = 0;
+            while ((m = RE_RS_PUB.exec(source))) push(m[1]);
+            return out;
+        }
+        if (lang === 'java') {
+            let m: RegExpExecArray | null;
+            RE_JAVA_PUBLIC_TYPE.lastIndex = 0;
+            while ((m = RE_JAVA_PUBLIC_TYPE.exec(source))) push(m[1]);
+            return out;
+        }
+        if (lang === 'cs') {
+            let m: RegExpExecArray | null;
+            RE_CS_PUBLIC_TYPE.lastIndex = 0;
+            while ((m = RE_CS_PUBLIC_TYPE.exec(source))) push(m[1]);
             return out;
         }
         let m: RegExpExecArray | null;
@@ -217,6 +316,10 @@ const LANG_NAME: Record<SourceLang, string> = {
     ts: 'TypeScript',
     js: 'JavaScript',
     py: 'Python',
+    go: 'Go',
+    rs: 'Rust',
+    java: 'Java',
+    cs: 'C#',
     other: 'Source',
 };
 

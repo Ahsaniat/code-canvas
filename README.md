@@ -189,7 +189,7 @@ User/workspace settings under `Code Canvas`:
 
 Full documentation lives in [`__doc__/`](__doc__/README.md). In brief:
 
-1. **Indexing** (extension host) — `fast-glob` finds JS/TS/Python files, regex scanners extract import specifiers *and their bindings*, and relative specifiers resolve to absolute paths. One read per file also captures exported symbols and the leading doc comment.
+1. **Indexing** (extension host) — `fast-glob` finds JS/TS, Python, Go, Rust, Java and C# files, regex scanners extract import specifiers *and their bindings*, and specifiers resolve to absolute paths (relative imports, tsconfig `paths`/`baseUrl`, Go modules, Rust modules, Java packages, C# namespaces). One read per file also captures exported symbols and the leading doc comment.
 2. **Subgraph** — a BFS from the seed files, then a top-up pass so disconnected parts of the workspace (a frontend that never imports the backend) still appear.
 3. **Model & projection** (webview) — the full tree is held as plain data. Only a *projection* of it reaches React Flow: each edge endpoint is mapped up to its nearest **visible** ancestor, so a collapsed folder carries the union of its descendants' external edges.
 4. **Layout** — one container-recursive pipeline, deepest-first, shared by all four engines. A group's size is final before its parent spaces it, so containers cannot overlap.
@@ -210,13 +210,13 @@ Full documentation lives in [`__doc__/`](__doc__/README.md). In brief:
 
 ### Supported languages
 
-JavaScript, TypeScript (including JSX/TSX) and Python. Nothing else is indexed.
+JavaScript, TypeScript (including JSX/TSX), Python, Go, Rust, Java and C#.
 
-Only **relative** imports resolve — bare package specifiers are skipped by design, and TypeScript `paths` / bundler aliases (`@/components/…`) are **not** resolved yet.
+Resolution covers relative imports and the project's own conventions: TypeScript `paths`/`baseUrl` from `tsconfig.json`/`jsconfig.json`, Go module paths from every `go.mod`, Rust `mod` declarations plus `crate::`/`self::`/`super::` use paths, Java packages/types and C# namespaces. Bare npm package specifiers are still skipped by design — the graph is about your code, not your dependencies.
 
 ## Troubleshooting
 - Changes don’t appear after installing: reload the VS Code window — `--install-extension` does not refresh an open one. Also make sure you ran `npm run build` at the root, since `vscode:prepublish` builds only the extension, not the webview.
-- Nothing shows up: make sure you opened a folder and have JS/TS or Python files that aren’t excluded by settings.
+- Nothing shows up: make sure you opened a folder and have JS/TS, Python, Go, Rust, Java or C# files that aren’t excluded by settings.
 - Whole folders missing: raise `codeCanvas.initialCap`, or check `excludeGlobs` isn’t too broad.
 - Very few edges: your imports probably go through TS `paths` or bundler aliases, which aren’t resolved yet.
 - Code cards won’t scroll: the wheel scrolls a card and zooms the canvas — make sure the pointer is over the code.
@@ -263,8 +263,6 @@ Tip: For a webview build watch, run `npx vite build --watch` inside `webview/`.
 
 
 ## Roadmap / Ideas
-- Additional language parsers (Go, Rust, Java, C#)
-- Resolve TypeScript `paths` and bundler aliases
 - Model-generated descriptions as an opt-in alternative to the heuristics
 - Named, saveable canvases and screenshot export
 

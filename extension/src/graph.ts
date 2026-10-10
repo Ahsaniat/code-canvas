@@ -4,11 +4,32 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import type { AutoDescriptions, EdgeLink, Graph, GraphNode } from './util';
 import { getDocumentSymbols } from './lsp';
-import { parseJsTsImports, parsePyImports, type ImportBinding } from './imports';
+import {
+    parseJsTsImports, parsePyImports, parseGoImports, parseRustImports, parseJavaImports, parseCsImports,
+    type ImportBinding, type ImportSpec,
+} from './imports';
+import { aliasCandidates, loadAliases, type AliasMap } from './aliases';
 import { describeFile, describeFolder, extractDocSummary, extractExportedSymbols, type FileImportDetail, type SourceLang } from './describe';
 
 const JS_GLOB = ['**/*.{js,jsx,ts,tsx}'];
 const PY_GLOB = ['**/*.py'];
+const GO_GLOB = ['**/*.go'];
+const RS_GLOB = ['**/*.rs'];
+const JAVA_GLOB = ['**/*.java'];
+const CS_GLOB = ['**/*.cs'];
+
+const EXT_LANG: Record<string, SourceLang> = {
+    '.py': 'py',
+    '.ts': 'ts', '.tsx': 'ts',
+    '.js': 'js', '.jsx': 'js',
+    '.go': 'go',
+    '.rs': 'rs',
+    '.java': 'java',
+    '.cs': 'cs',
+};
+
+/** Cap on how many files a package/namespace import may point at. */
+const MAX_PACKAGE_TARGETS = 8;
 
 /** Per-file ceiling on exported names sent to the webview for search. */
 const MAX_NODE_SYMBOLS = 64;
@@ -46,22 +67,15 @@ export type Index = {
 
 export async function buildIndex(root: string): Promise<Index> {
     const excludes: string[] = vscode.workspace.getConfiguration('codeCanvas').get('excludeGlobs') || [];
-    const rawFiles = Array.from(new Set([
-        ...await fg(JS_GLOB, { cwd: root, absolute: true, ignore: excludes }),
-        ...await fg(PY_GLOB, { cwd: root, absolute: true, ignore: excludes }),
-    ]));
-    const files = rawFiles.map(f => normalizePath(f));
+    const rawFiles = new Set<string>();
+    for (const glob of [JS_GLOB, PY_GLOB, GO_GLOB, RS_GLOB, JAVA_GLOB, CS_GLOB]) {
+        for (const f of await fg(glob, { cwd: root, absolute: true, ignore: excludes })) rawFiles.add(f);
+    }
+    const files = Array.from(rawFiles).map(f => normalizePath(f));
 
     const lang = new Map<string, SourceLang>();
     for (const f of files) {
-        const ext = path.extname(f).toLowerCase();
-        lang.set(
-            f,
-            ext === '.py' ? 'py'
-                : (ext === '.ts' || ext === '.tsx') ? 'ts'
-                    : (ext === '.js' || ext === '.jsx') ? 'js'
-                        : 'other'
-        );
+        lang.set(f, EXT_LANG[path.extname(f).toLowerCase()] ?? 'other');
     }
 
     const imports = new Map<string, Set<string>>();
@@ -77,23 +91,58 @@ export async function buildIndex(root: string): Promise<Index> {
     // P2-5: read files asynchronously with bounded concurrency instead of a
     // sequential wall of blocking readFileSync calls.
     const sources = await mapWithConcurrency(files, 24, async f => [f, await safeReadAsync(f)] as const);
+
+    // ---- language-specific resolution context, built once per build --------
+    const aliases = loadAliases(root);
+    const goModules = await readGoModules(root, excludes);
+    const goByDir = new Map<string, string[]>();
+    for (const f of files) {
+        if (lang.get(f) === 'go') pushTo(goByDir, normalizePath(path.dirname(f)), f);
+    }
+    // Java and C# imports name types/packages, not paths, so the first pass
+    // maps fully-qualified names and namespaces back to the files declaring them.
+    const javaTypeByFqn = new Map<string, string>();
+    const javaPackageFiles = new Map<string, string[]>();
+    const csNamespaceFiles = new Map<string, string[]>();
+    for (const [f, src] of sources) {
+        const fileLang = lang.get(f);
+        if (fileLang === 'java') {
+            const pkg = RE_JAVA_PACKAGE.exec(src)?.[1] ?? '';
+            const name = path.basename(f, '.java');
+            javaTypeByFqn.set(pkg ? `${pkg}.${name}` : name, f);
+            if (pkg) pushTo(javaPackageFiles, pkg, f);
+        } else if (fileLang === 'cs') {
+            RE_CS_NAMESPACE.lastIndex = 0;
+            let m: RegExpExecArray | null;
+            while ((m = RE_CS_NAMESPACE.exec(src))) pushTo(csNamespaceFiles, m[1], f);
+        }
+    }
+
     for (const [f, src] of sources) {
         const fileLang = lang.get(f) ?? 'other';
-        const specs = fileLang === 'py' ? parsePyImports(src) : parseJsTsImports(src);
+        const specs = parseForLang(fileLang, src);
         const targets = new Set<string>();
         const lineMap = new Map<string, number[]>();
         const bindingMap = new Map<string, PlacedBinding[]>();
+        const ctx: Omit<ResolveContext, 'spec'> = {
+            root, fromFile: f, aliases, existsCache,
+            goModules, goByDir, javaTypeByFqn, javaPackageFiles, csNamespaceFiles,
+        };
         for (const { spec, line, bindings } of specs) {
-            const r = fileLang === 'py' ? resolvePy(root, f, spec, existsCache) : resolveJsTs(f, spec, existsCache);
-            if (!r) continue;
-            const rNorm = normalizePath(r);
-            targets.add(rNorm);
-            const arr = lineMap.get(rNorm) || [];
-            arr.push(line);
-            lineMap.set(rNorm, arr);
-            const acc = bindingMap.get(rNorm) || [];
-            for (const b of bindings) acc.push({ ...b, line });
-            bindingMap.set(rNorm, acc);
+            const resolved = resolveSpec(fileLang, { ...ctx, spec });
+            if (!resolved) continue;
+            const list = Array.isArray(resolved) ? resolved : [resolved];
+            for (const r of list) {
+                const rNorm = normalizePath(r);
+                if (rNorm === f) continue;
+                targets.add(rNorm);
+                const arr = lineMap.get(rNorm) || [];
+                arr.push(line);
+                lineMap.set(rNorm, arr);
+                const acc = bindingMap.get(rNorm) || [];
+                for (const b of bindings) acc.push({ ...b, line });
+                bindingMap.set(rNorm, acc);
+            }
         }
         imports.set(f, targets);
         importLines.set(f, lineMap);
@@ -510,19 +559,218 @@ function existsCached(p: string, cache?: Map<string, boolean>): boolean {
     return v;
 }
 
-function resolveJsTs(fromFile: string, spec: string, exists?: Map<string, boolean>): string | undefined {
-    if (!spec.startsWith('.') && !spec.startsWith('/')) return; // skip packages
-    const base = path.resolve(path.dirname(fromFile), spec);
-    const tries = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx'];
-    for (const t of tries) { const p = base + t; if (existsCached(p, exists)) return normalizePath(p); }
+function parseForLang(lang: SourceLang, src: string): ImportSpec[] {
+    switch (lang) {
+        case 'py': return parsePyImports(src);
+        case 'go': return parseGoImports(src);
+        case 'rs': return parseRustImports(src);
+        case 'java': return parseJavaImports(src);
+        case 'cs': return parseCsImports(src);
+        default: return parseJsTsImports(src);
+    }
 }
-function resolvePy(root: string, _from: string, mod: string, exists?: Map<string, boolean>): string | undefined {
+
+type ResolveContext = {
+    root: string;
+    fromFile: string;
+    spec: string;
+    aliases?: AliasMap;
+    existsCache: Map<string, boolean>;
+    goModules?: GoModule[];
+    goByDir: Map<string, string[]>;
+    javaTypeByFqn: Map<string, string>;
+    javaPackageFiles: Map<string, string[]>;
+    csNamespaceFiles: Map<string, string[]>;
+};
+
+function resolveSpec(lang: SourceLang, ctx: ResolveContext): string | string[] | undefined {
+    switch (lang) {
+        case 'py': return resolvePy(ctx.root, ctx.spec, ctx.existsCache);
+        case 'go': return resolveGo(ctx);
+        case 'rs': return resolveRust(ctx);
+        case 'java': return resolveJava(ctx);
+        case 'cs': return resolveCs(ctx);
+        default: return resolveJsTs(ctx.fromFile, ctx.spec, ctx.existsCache, ctx.aliases);
+    }
+}
+
+/** Relative specifiers, `baseUrl` fallbacks and tsconfig `paths` aliases. */
+function resolveJsTs(fromFile: string, spec: string, exists?: Map<string, boolean>, aliases?: AliasMap): string | undefined {
+    const tries = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx'];
+    const bases: string[] = [];
+    if (spec.startsWith('.') || spec.startsWith('/')) {
+        bases.push(path.resolve(path.dirname(fromFile), spec));
+    } else if (aliases) {
+        bases.push(...aliasCandidates(spec, aliases));
+    }
+    for (const base of bases) {
+        for (const t of tries) {
+            const p = base + t;
+            if (existsCached(p, exists)) return normalizePath(p);
+        }
+    }
+    return undefined;
+}
+
+function resolvePy(root: string, mod: string, exists?: Map<string, boolean>): string | undefined {
     const parts = mod.split('.');
     const candidates = [
         path.resolve(root, ...parts) + '.py',
         path.resolve(root, ...parts, '__init__.py')
     ];
     for (const p of candidates) if (existsCached(p, exists)) return normalizePath(p);
+}
+
+type GoModule = { module: string; dir: string };
+
+/**
+ * Every `go.mod` under the workspace, longest module path first. A monorepo can
+ * hold several modules, and an import must resolve against its own module root.
+ */
+async function readGoModules(root: string, excludes: string[]): Promise<GoModule[]> {
+    const out: GoModule[] = [];
+    try {
+        const mods = await fg('**/go.mod', { cwd: root, absolute: true, ignore: excludes });
+        for (const m of mods) {
+            try {
+                const module = /^module[ \t]+(\S+)/m.exec(fs.readFileSync(m, 'utf8'))?.[1];
+                if (module) out.push({ module, dir: normalizePath(path.dirname(m)) });
+            } catch {
+                // unreadable go.mod - skip it
+            }
+        }
+    } catch {
+        // no go.mod anywhere
+    }
+    out.sort((a, b) => b.module.length - a.module.length);
+    return out;
+}
+
+/**
+ * Go imports name packages (directories), so a resolved import can point at
+ * several files. Relative specifiers are resolved against the importing file;
+ * module-path specifiers against the `go.mod` module root.
+ */
+function resolveGo(ctx: ResolveContext): string[] | undefined {
+    let dir: string | undefined;
+    if (ctx.spec.startsWith('.')) {
+        dir = normalizePath(path.resolve(path.dirname(ctx.fromFile), ctx.spec));
+    } else {
+        const mod = ctx.goModules?.find(m => ctx.spec === m.module || ctx.spec.startsWith(m.module + '/'));
+        if (mod) {
+            const rel = ctx.spec.slice(mod.module.length).replace(/^\/+/, '');
+            dir = normalizePath(path.resolve(mod.dir, rel));
+        }
+    }
+    if (!dir) return undefined;
+    const files = ctx.goByDir.get(dir);
+    return files && files.length ? files.slice(0, MAX_PACKAGE_TARGETS) : undefined;
+}
+
+/** The module directory a Rust file represents (`src/a/b.rs` and `src/a/b/mod.rs` are the same module). */
+function moduleDirOf(fromFile: string): string {
+    const base = path.basename(fromFile, '.rs');
+    const dir = path.dirname(fromFile);
+    return (base === 'lib' || base === 'main' || base === 'mod') ? dir : path.join(dir, base);
+}
+
+function findSrcRoot(root: string, fromFile: string): string {
+    let cur = path.dirname(fromFile);
+    const rootNorm = normalizePath(root);
+    while (cur && cur !== path.dirname(cur)) {
+        if (cur === rootNorm) break;
+        if (path.basename(cur) === 'src') return cur;
+        cur = path.dirname(cur);
+    }
+    const src = path.join(root, 'src');
+    return fs.existsSync(src) ? src : root;
+}
+
+/**
+ * `mod x;` → `x.rs` / `x/mod.rs` next to (or under) the current module file.
+ * `use crate::a::b::C` resolves from `crate::`, `self::` and `super::` only;
+ * external crate paths are skipped, as are 2015-edition bare paths.
+ */
+function resolveRust(ctx: ResolveContext): string | undefined {
+    if (ctx.spec.startsWith('mod:')) {
+        const name = ctx.spec.slice(4);
+        const base = path.basename(ctx.fromFile, '.rs');
+        const dir = path.dirname(ctx.fromFile);
+        const candidates = (base === 'lib' || base === 'main' || base === 'mod')
+            ? [path.join(dir, name + '.rs'), path.join(dir, name, 'mod.rs')]
+            : [
+                path.join(dir, base, name + '.rs'),
+                path.join(dir, base, name, 'mod.rs'),
+                path.join(dir, name + '.rs'),
+                path.join(dir, name, 'mod.rs'),
+            ];
+        for (const c of candidates) if (existsCached(c, ctx.existsCache)) return normalizePath(c);
+        return undefined;
+    }
+    if (!ctx.spec.startsWith('use:')) return undefined;
+    const segments = ctx.spec.slice(4).split('::').filter(Boolean);
+    let baseDir: string;
+    if (segments[0] === 'crate') {
+        baseDir = findSrcRoot(ctx.root, ctx.fromFile);
+    } else if (segments[0] === 'self') {
+        baseDir = moduleDirOf(ctx.fromFile);
+    } else if (segments[0] === 'super') {
+        baseDir = path.dirname(moduleDirOf(ctx.fromFile));
+    } else {
+        return undefined;
+    }
+    segments.shift();
+    // The last segment(s) may name an item rather than a module: try the full
+    // path first, then progressively shorter prefixes.
+    for (let i = segments.length; i >= 1; i--) {
+        const rel = segments.slice(0, i).join('/');
+        for (const candidate of [path.join(baseDir, rel + '.rs'), path.join(baseDir, rel, 'mod.rs')]) {
+            if (existsCached(candidate, ctx.existsCache)) return normalizePath(candidate);
+        }
+    }
+    return undefined;
+}
+
+/** `import a.b.C` → the file declaring `a.b.C`; `import a.b.*` → all files of that package. */
+function resolveJava(ctx: ResolveContext): string | string[] | undefined {
+    if (ctx.spec.endsWith('.*')) {
+        const files = ctx.javaPackageFiles.get(ctx.spec.slice(0, -2));
+        return files && files.length ? files.slice(0, MAX_PACKAGE_TARGETS) : undefined;
+    }
+    const direct = ctx.javaTypeByFqn.get(ctx.spec);
+    if (direct) return direct;
+    // Static imports name a member: drop trailing segments until a type matches.
+    const bits = ctx.spec.split('.');
+    for (let i = bits.length - 1; i >= 1; i--) {
+        const hit = ctx.javaTypeByFqn.get(bits.slice(0, i).join('.'));
+        if (hit) return hit;
+    }
+    return undefined;
+}
+
+/** `using A.B;` → the files declaring namespace `A.B` (or its nearest parent). */
+function resolveCs(ctx: ResolveContext): string[] | undefined {
+    let ns: string | undefined = ctx.spec;
+    while (ns) {
+        const files = ctx.csNamespaceFiles.get(ns);
+        if (files && files.length) return files.slice(0, MAX_PACKAGE_TARGETS);
+        const idx = ns.lastIndexOf('.');
+        if (idx < 0) break;
+        ns = ns.slice(0, idx);
+    }
+    return undefined;
+}
+
+const RE_JAVA_PACKAGE = /^[ \t]*package[ \t]+([\w.]+)[ \t]*;/m;
+const RE_CS_NAMESPACE = /^[ \t]*namespace[ \t]+([A-Za-z_][\w.]*)/gm;
+
+function pushTo(map: Map<string, string[]>, key: string, value: string): void {
+    const arr = map.get(key);
+    if (arr) {
+        if (!arr.includes(value)) arr.push(value);
+    } else {
+        map.set(key, [value]);
+    }
 }
 
 function hashString(input: string): string {

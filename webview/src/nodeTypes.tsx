@@ -6,6 +6,7 @@ import { DescriptionPanel } from './components/DescriptionPanel';
 import { TagBar } from './components/TagBar';
 import { useMetaStore } from './store/metaStore';
 import { firstSentence } from './text';
+import type { Lang } from './code/highlight';
 
 // ---------------------------------------------------------------------------
 // Canvas context
@@ -32,7 +33,7 @@ export type FolderNodeData = {
 export type FileNodeData = {
     label: string;
     path: string;
-    lang: 'ts' | 'js' | 'py' | 'other';
+    lang: Lang;
     dim?: boolean;
 };
 

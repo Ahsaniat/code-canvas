@@ -153,7 +153,7 @@ console.log(p.nodes.length, p.edges.length);
 | --- | --- |
 | Changes don't appear after installing | Window not reloaded, or webview not rebuilt before packaging |
 | Whole folders missing from the graph | `initialCap` too low, or an `excludeGlobs` pattern too broad |
-| Very few edges | Imports use TS `paths`/bundler aliases — not resolved (see [02](02-indexing.md)) |
+| Very few edges | Imports use aliases the resolver does not know (e.g. Vite-only aliases); see [02](02-indexing.md) |
 | Everything sits in the centre | Projection has no edges; see [03](03-graph-model.md) |
 | Layout is Dagre when ELK was chosen | ELK worker failed to load — check the CSP allows `worker-src blob:` |
 | Code cards won't scroll | The scroll container lost its `nowheel` class; React Flow is eating the wheel event |
@@ -162,9 +162,10 @@ console.log(p.nodes.length, p.edges.length);
 
 ## Known limitations
 
-- **Languages** — JS/TS/JSX/TSX and Python only.
-- **Module resolution** — relative specifiers only; TS `paths` and bundler
-  aliases are not resolved, and bare package imports are skipped by design.
+- **Languages** — JS/TS/JSX/TSX, Python, Go, Rust, Java and C#.
+- **Module resolution** — relative imports plus TS `paths`/`baseUrl`, Go module
+  paths, Rust `mod`/`use crate|self|super`, Java packages and C# namespaces;
+  bare package imports are skipped by design.
 - **Descriptions** — heuristic, not model-generated.
 - **React Flow v12** — migrated from v11 (`@xyflow/react`); `NodeResizer` is
   adopted for file nodes (sizes persist in `.code-canvas/meta.json`). Folder and
