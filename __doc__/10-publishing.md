@@ -38,7 +38,7 @@ Or publish an already-built VSIX:
 ```bash
 cd extension
 npx vsce package --no-dependencies
-npx vsce publish --packagePath code-canvas-0.2.0.vsix -p <PAT>
+npx vsce publish --packagePath code-canvas-oss-0.2.0.vsix -p <PAT>
 ```
 
 ## After publishing

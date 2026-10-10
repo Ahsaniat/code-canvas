@@ -1,5 +1,29 @@
 # Code Canvas - Visual Code Graph for VS Code
 
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/ahsaniat.code-canvas-oss?label=marketplace&color=0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/ahsaniat.code-canvas-oss?color=0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
+[![GitHub release](https://img.shields.io/github/v/release/Ahsaniat/code-canvas?label=release&color=0b0e12)](https://github.com/Ahsaniat/code-canvas/releases)
+
+## Install
+
+**From the VS Code Marketplace** (recommended):
+
+```bash
+code --install-extension ahsaniat.code-canvas-oss
+```
+
+Or search **Code Canvas OSS** in the Extensions view, or open the
+[Marketplace page](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss).
+
+**From GitHub Releases:** download the `.vsix` from the
+[latest release](https://github.com/Ahsaniat/code-canvas/releases) and install it:
+
+```bash
+code --install-extension code-canvas-oss-<version>.vsix
+```
+
+**From source:** see [Install and Build](#install-and-build-from-source) below.
+
 ## Overview
 Code Canvas is a Visual Studio Code extension that turns your workspace into an interactive dependency graph. It indexes your JavaScript/TypeScript and Python files, resolves their imports, and renders the result as a canvas of folders and files connected by circuit-style wires.
 
@@ -79,11 +103,12 @@ Create a `.vsix` package:
 ```bash
 npm run package
 ```
-This generates a file like `extension/code-canvas-0.0.1.vsix`.
+This generates `extension/code-canvas-oss-<version>.vsix` (for example
+`code-canvas-oss-0.2.0.vsix`).
 
 Install the VSIX locally:
 ```bash
-code --install-extension extension/code-canvas-0.0.1.vsix
+code --install-extension extension/code-canvas-oss-<version>.vsix
 ```
 Or via VS Code: Extensions view → “…” menu → Install from VSIX…
 
