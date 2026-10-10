@@ -1191,7 +1191,7 @@ pre.hljs.wrap {
     padding: 24px;
     text-align: center;
     background: var(--surface);
-    color: #e5e7eb;
+    color: var(--text-primary);
 }
 
 .canvas-error-title {
@@ -1202,14 +1202,14 @@ pre.hljs.wrap {
 .canvas-error-detail {
     max-width: 640px;
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     overflow-wrap: anywhere;
 }
 
 .canvas-error button {
-    background: #111827;
-    border: 1px solid #1f2937;
-    color: #e5e7eb;
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
     padding: 6px 12px;
     border-radius: 8px;
     cursor: pointer;
