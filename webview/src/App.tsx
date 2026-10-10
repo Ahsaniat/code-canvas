@@ -820,12 +820,33 @@ export default function App() {
         // scheduleLayout only reads refs, so the first-render closure is fine.
     }, []);
 
+    /**
+     * A collapsed node's card is auto-height; it reports the measured height so
+     * the node box (selection frame, handles, edges, spacing) follows the card.
+     * `null` restores the stored (user or content) height.
+     */
+    const setCollapsedHeight = useCallback((path: string, height: number | null) => {
+        if (height !== null && (!Number.isFinite(height) || height < 24)) return;
+        let changed = false;
+        nodesRef.current = nodesRef.current.map(n => {
+            if (n.type !== 'file' || (n.data as any)?.path !== path) return n;
+            const target = Math.round(height ?? fileSizeFor(path).height);
+            if (n.height === target) return n;
+            changed = true;
+            return { ...n, height: target };
+        });
+        if (!changed) return;
+        setNodes(nodesRef.current);
+        scheduleLayout(60);
+    }, [fileSizeFor]);
+
     const canvasCtx = useMemo<CanvasContextValue>(() => ({
         zoomOk, wrap,
         codeCacheRef, truncatedCacheRef, codeRefs,
         onTokenClick, onOpenFile: openFileByPath, onToggleFolder: toggleFolder,
         onResizeFile: resizeFile,
-    }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder, resizeFile]);
+        onCollapsedHeight: setCollapsedHeight,
+    }), [zoomOk, wrap, onTokenClick, openFileByPath, toggleFolder, resizeFile, setCollapsedHeight]);
 
     // P1-2: selective store subscriptions rather than the whole store.
     const activeTagFilters = useMetaStore(s => s.activeTagFilters);
