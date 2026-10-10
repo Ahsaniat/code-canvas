@@ -1,10 +1,10 @@
 # Publishing to the Visual Studio Marketplace
 
-First release target: **0.2.0** · Item name: `code-canvas.code-canvas`
+First release target: **0.2.0** · Item name: `ahsaniat.code-canvas`
 
 ## Requirements checklist
 
-- [ ] Publisher ID on <https://marketplace.visualstudio.com/manage/publishers> matches `publisher` in `extension/package.json` (`code-canvas`)
+- [ ] Publisher ID on <https://marketplace.visualstudio.com/manage/publishers> matches `publisher` in `extension/package.json` (`ahsaniat`)
 - [ ] Azure DevOps PAT with **Marketplace → Manage** scope (see setup below)
 - [ ] `npm ci && npm run build` clean
 - [ ] `npx vsce package --no-dependencies` succeeds
@@ -16,12 +16,12 @@ First release target: **0.2.0** · Item name: `code-canvas.code-canvas`
 
 ## One-time setup
 
-1. **Confirm the publisher ID.** The manage page URL ends with `/publishers/<id>`. If it is not `code-canvas`, change `publisher` in `extension/package.json`, rebuild, and repackage.
+1. **Confirm the publisher ID.** The manage page URL ends with `/publishers/<id>`. The publisher is set to `ahsaniat`; if that ever changes, update `publisher` in `extension/package.json` and repackage.
 2. **Create a PAT:** <https://dev.azure.com> → *User settings → Personal access tokens → New Token*
    - Organization: **All accessible organizations**
    - Scopes: **Marketplace → Manage** (add **Acquire** only for private extensions)
    - Copy the token; it is shown once.
-3. **Authenticate vsce:** `npx vsce login code-canvas` (paste the PAT). For one-off use, pass `-p <PAT>` instead.
+3. **Authenticate vsce:** `npx vsce login ahsaniat` (paste the PAT). For one-off use, pass `-p <PAT>` instead.
 
 ## Publish
 
@@ -43,8 +43,8 @@ npx vsce publish --packagePath code-canvas-0.2.0.vsix -p <PAT>
 
 ## After publishing
 
-- Marketplace page: <https://marketplace.visualstudio.com/items?itemName=code-canvas.code-canvas>
-- Install from the Marketplace: `code --install-extension code-canvas.code-canvas`
+- Marketplace page: <https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas>
+- Install from the Marketplace: `code --install-extension ahsaniat.code-canvas`
 - README images: vsce rewrites relative links to
   `https://github.com/Ahsaniat/code-canvas/raw/HEAD/...`, so the files under
   `__doc__/demo_photos/` must exist on the default branch (`master`).
