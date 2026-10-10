@@ -244,12 +244,9 @@ pre.hljs.wrap {
     cursor: grab;
 }
 
-.node-placeholder-title {
-    font-weight: 900;
-    line-height: 1.1;
-    letter-spacing: 0.2px;
-}
-
+/* The big zoom-aware label is drawn by `.node-placeholder-body::before`
+   (content: attr(data-label)). There used to be a second title element here,
+   which is why every zoomed-out node showed its name twice. */
 .node-placeholder-body::before {
     content: attr(data-label);
     display: block;

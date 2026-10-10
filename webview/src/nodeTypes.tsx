@@ -34,7 +34,6 @@ export type FileNodeData = {
     path: string;
     lang: 'ts' | 'js' | 'py' | 'other';
     dim?: boolean;
-    width?: number;
 };
 
 export type FolderNodeType = Node<FolderNodeData, 'folder'>;
@@ -59,12 +58,6 @@ function useCanvas(): CanvasContextValue {
     const ctx = useContext(CanvasContext);
     if (!ctx) throw new Error('CanvasContext provider missing');
     return ctx;
-}
-
-function computePlaceholderFontPx(label: string, widthPx: number | undefined): number {
-    const width = Math.max(120, (widthPx ?? 480) * 0.9);
-    const chars = Math.max(1, (label || '').length);
-    return Math.min(96, Math.max(18, Math.floor(width / (chars * 0.55))));
 }
 
 /**
@@ -119,8 +112,6 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
         updateNodeInternals(p.id);
     }, [collapsed, descriptionExpanded, p.id, updateNodeInternals]);
 
-    const placeholderSize = computePlaceholderFontPx(data.label, data.width);
-
     return (
         <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: data.dim ? 0.25 : 1 }}>
             <div className="file-node-header label-fixed code-card-header" onDoubleClick={() => ctx.onOpenFile(path)}>
@@ -152,7 +143,6 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
                 />
             ) : (
                 <div className="node-placeholder-body" data-label={data.label}>
-                    <div className="node-placeholder-title" style={{ fontSize: placeholderSize }}>{data.label}</div>
                     <div style={{ opacity: 0.75 }}>Zoom in to view code</div>
                 </div>
             ))}
