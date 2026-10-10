@@ -57,7 +57,7 @@ stands in for it. A collapsed folder registers itself as the representative of
 all its descendants.
 
 Because the walk is breadth-first over the visible tree, the output array is
-already **parents-before-children** — React Flow v11 requires this, and violating
+already **parents-before-children** — React Flow requires this, and violating
 it detaches or mis-positions children.
 
 ### Edge projection

@@ -25,7 +25,7 @@ import ELK from 'elkjs/lib/elk-api.js';
 // @ts-ignore -- Vite worker import has no type declaration
 import ElkWorker from 'elkjs/lib/elk-worker.min.js?worker&inline';
 import dagre from 'dagre';
-import { Node, Edge } from 'reactflow';
+import { Node, Edge } from '@xyflow/react';
 import { Box, Engine, EngineContext, Pt, normalize } from './layout/types';
 import { radialEngine } from './layout/radial';
 

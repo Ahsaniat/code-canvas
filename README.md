@@ -19,7 +19,7 @@ The canvas is **collapse-first**: folders open as compact chips carrying the agg
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
 
 ## Status & Disclaimer (by me, Ahsan)
-I have forked it from wallxack and fixed all known bugs. There maybe unknown bugs. I need to conduct regression test which I haven't done yet. But I have been using the extension for a month, so far so good. The codebase was suffering from massive optimization issue with graphics, specially graph rendering and staturing while loading graphs making the not only extension but also the VSCode almost unusable. I have identified all the optimization issues and tried to fix them. The extension is now stable. I will transition this codebase to react flow 12, and introduce nodesizer  later at the end of september, 2026. I have been working on this. 
+I have forked it from wallxack and fixed all known bugs. There maybe unknown bugs. I need to conduct regression test which I haven't done yet. But I have been using the extension for a month, so far so good. The codebase was suffering from massive optimization issue with graphics, specially graph rendering and staturing while loading graphs making the not only extension but also the VSCode almost unusable. I have identified all the optimization issues and tried to fix them. The extension is now stable. I have transitioned this codebase to React Flow 12 (`@xyflow/react`); adopting `NodeResizer` is next. 
 
 
 ## Requirements
@@ -227,7 +227,7 @@ Tip: For a webview build watch, run `npx vite build --watch` inside `webview/`.
 ## Roadmap / Ideas
 - Additional language parsers (Go, Rust, Java, C#)
 - Resolve TypeScript `paths` and bundler aliases
-- Migrate to React Flow v12 (`@xyflow/react`) and adopt `NodeResizer`
+- Adopt React Flow's `NodeResizer` (the v12 migration is done)
 - Model-generated descriptions as an opt-in alternative to the heuristics
 - Named, saveable canvases and screenshot export
 

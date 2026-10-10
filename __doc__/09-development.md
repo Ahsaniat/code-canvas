@@ -166,8 +166,8 @@ console.log(p.nodes.length, p.edges.length);
 - **Module resolution** — relative specifiers only; TS `paths` and bundler
   aliases are not resolved, and bare package imports are skipped by design.
 - **Descriptions** — heuristic, not model-generated.
-- **React Flow v11** — a v12 (`@xyflow/react`) migration would allow
-  `NodeResizer` and retire remaining manual geometry, but has not been done.
+- **React Flow v12** — migrated from v11 (`@xyflow/react`); adopting
+  `NodeResizer` and retiring the remaining manual geometry is still open.
 
 ## Code conventions
 

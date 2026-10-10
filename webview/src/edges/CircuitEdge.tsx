@@ -1,12 +1,16 @@
-import { BaseEdge, EdgeProps, getSmoothStepPath } from 'reactflow';
+import { BaseEdge, EdgeProps, getSmoothStepPath } from '@xyflow/react';
+import type { Edge } from '@xyflow/react';
 import type { EdgeRelationship } from '../model/graphModel';
 
-export interface CircuitEdgeData {
+// Type alias (not interface): v12 constrains edge data to Record<string, unknown>.
+export type CircuitEdgeData = {
     /** Pre-computed SVG path. Routing NEVER happens in this render body. */
     d?: string;
     relationships: EdgeRelationship[];
     aggregated: boolean;
-}
+};
+
+export type CircuitEdgeType = Edge<CircuitEdgeData, 'circuit'>;
 
 /**
  * Thin white "wire" edge.
@@ -16,7 +20,7 @@ export interface CircuitEdgeData {
  * very first frame after a projection change — it degrades to React Flow's own
  * orthogonal smoothstep path so an edge is never invisible.
  */
-export function CircuitEdge(props: EdgeProps<CircuitEdgeData>) {
+export function CircuitEdge(props: EdgeProps<CircuitEdgeType>) {
     const { id, data, style, markerEnd, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } = props;
     let path = data?.d;
     if (!path) {

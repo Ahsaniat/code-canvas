@@ -31,7 +31,7 @@ Several documents call out *invariants* — properties the code is structured to
 make impossible to violate, rather than merely checked at runtime. They exist
 because each one corresponds to a class of bug that previously shipped:
 
-- **Parents precede children** in the node array (React Flow v11 requirement).
+- **Parents precede children** in the node array (React Flow requirement).
 - **One size source per node** — nothing resizes a node after its siblings were
   spaced against it.
 - **No routing in a render body** — geometry is computed in a memo, never per frame.

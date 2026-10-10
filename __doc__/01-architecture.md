@@ -10,7 +10,7 @@ determines where every piece of logic belongs.
 │ EXTENSION HOST (Node.js)            │        │ WEBVIEW (browser sandbox)        │
 │ extension/src/*.ts → dist/extension.js│      │ webview/src/* → media/assets/*.js│
 │                                     │        │                                  │
-│ • filesystem access (fast-glob, fs) │ post   │ • React 18 + React Flow v11      │
+│ • filesystem access (fast-glob, fs) │ post   │ • React 18 + React Flow v12      │
 │ • VS Code API (config, editors, LSP)│Message │ • layout engines (ELK worker)    │
 │ • import parsing + resolution       │◄──────►│ • edge routing (A*)              │
 │ • auto-description generation       │        │ • rendering & interaction        │
