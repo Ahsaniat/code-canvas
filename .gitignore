@@ -9,7 +9,7 @@ webview/node_modules
 # Kept in git history as a fallback, but not tracked in the working tree.
 extension/dist
 extension/media/
-extension/code-canvas-0.0.1.vsix
+extension/code-canvas-*.vsix
 
 # Workspace metadata (keys are machine-specific absolute paths)
 .code-canvas/
