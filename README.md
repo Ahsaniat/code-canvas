@@ -167,13 +167,13 @@ Contributed commands (Command Palette):
 - Code Canvas: Open Folder as Seed (`codeCanvas.seedFolder`)
 - Code Canvas: Load 25 More (`codeCanvas.loadMore`)
 
-Default keybindings:
+Keybindings (while the canvas has focus):
 - ⇧O — Open Changed Files
 - ⇧+ — Load 25 More
 - ⇧1 / ⇧2 / ⇧3 / ⇧4 — Layout: Radial / Dagre / ELK / Force
 - R — Toggle Refs
 
-In the webview: `/` or ⌘/Ctrl+F focuses search, `E` expands the selection, `Delete` hides it.
+These are handled inside the canvas, so they never intercept keystrokes in the editor. In the webview: `/` or ⌘/Ctrl+F focuses search, `E` expands the selection, `Delete` hides it.
 
 All four algorithms are implemented and switch at runtime. Radial is the default.
 
