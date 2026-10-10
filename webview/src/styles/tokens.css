@@ -1,0 +1,114 @@
+/* Split from the original styles.css. Import order matters (tokens, nodes, panels, dialogs) - main.tsx owns it. */
+
+/* ==========================================================================
+   Code Canvas — thin white "wire" aesthetic.
+
+   There is no indigo/violet accent anywhere: selection, linking and edge
+   emphasis are all expressed as a 1px white hairline plus a soft white glow.
+   Nothing draws a thick coloured ring, and no state tints a node's fill.
+   ========================================================================== */
+
+:root {
+    color-scheme: dark;
+    --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    --zoom-duration: 320ms;
+
+    /* The single accent: white at varying strength. */
+    --wire: rgba(255, 255, 255, 0.55);
+    --wire-strong: rgba(255, 255, 255, 0.92);
+    --wire-hairline: rgba(255, 255, 255, 0.85);
+    --wire-faint: rgba(255, 255, 255, 0.12);
+    --wire-glow: rgba(255, 255, 255, 0.28);
+
+    --surface: #0d1117;
+    --surface-raised: #0b1220;
+    --surface-deep: #0b0e12;
+    --surface-panel: #111827;
+    --surface-minimap: #0f1115;
+
+    /* Text hierarchy. */
+    --text-primary: #e5e7eb;
+    --text-strong: #ffffff;
+    --text-body: #cdd6f4;
+    --text-soft: #cbd5e1;
+    --text-soft-bright: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-secondary-bright: #a8b3c4;
+    --text-muted: #64748b;
+    --text-faint: #6b7280;
+    --text-dim: #9ca3af;
+    --text-strong-dim: rgba(255, 255, 255, 0.7);
+
+    /* Borders and white tints. */
+    --border: #1f2937;
+    --border-strong: rgba(255, 255, 255, 0.45);
+    --border-medium: rgba(255, 255, 255, 0.3);
+    --border-soft: rgba(255, 255, 255, 0.25);
+    --tint-03: rgba(255, 255, 255, 0.03);
+    --tint-04: rgba(255, 255, 255, 0.04);
+    --tint-05: rgba(255, 255, 255, 0.05);
+    --tint-06: rgba(255, 255, 255, 0.06);
+    --tint-08: rgba(255, 255, 255, 0.08);
+    --tint-10: rgba(255, 255, 255, 0.1);
+    --tint-12: rgba(255, 255, 255, 0.12);
+    --tint-14: rgba(255, 255, 255, 0.14);
+    --tint-20: rgba(255, 255, 255, 0.2);
+    --tint-35: rgba(255, 255, 255, 0.35);
+
+    /* Overlays, shadows and status. */
+    --overlay: rgba(2, 6, 23, 0.94);
+    --overlay-soft: rgba(2, 6, 23, 0.92);
+    --shadow-strong: rgba(0, 0, 0, 0.55);
+    --shadow: rgba(0, 0, 0, 0.5);
+    --shadow-text: rgba(0, 0, 0, 0.35);
+    --shadow-text-soft: rgba(0, 0, 0, 0.25);
+    --highlight-bg: rgba(255, 214, 10, 0.15);
+    --highlight-border: rgba(255, 214, 10, 0.35);
+    --status-error: #f87171;
+
+    /* Gradients. */
+    --gradient-folder: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+    --gradient-file-header: linear-gradient(180deg, #111a2b, #0b1220);
+    --gradient-truncated: linear-gradient(180deg, rgba(13, 17, 23, 0), rgba(13, 17, 23, 0.92));
+    --label-min-size: 13px;
+    --label-max-size: 18px;
+}
+
+body,
+html,
+#root {
+    margin: 0;
+    height: 100%;
+    background: var(--surface-deep);
+    color: var(--text-body);
+    font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Inter, sans-serif;
+}
+
+.root {
+    height: 100%;
+}
+
+.toolbar {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.toolbar button,
+.toolbar select {
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.toolbar button:hover,
+.toolbar select:hover {
+    border-color: var(--wire-hairline);
+}

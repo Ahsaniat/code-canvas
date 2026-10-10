@@ -1,0 +1,284 @@
+/* Split from the original styles.css. Import order matters (tokens, nodes, panels, dialogs) - main.tsx owns it. */
+
+/* ── Floating overlays (hover label + edge tooltip) ────────────────────── */
+
+.canvas-overlay {
+    position: fixed;
+    max-width: 460px;
+    padding: 8px 10px;
+    background: var(--overlay);
+    border: 1px solid var(--wire-hairline);
+    border-radius: 8px;
+    color: var(--text-primary);
+    pointer-events: none;
+    transform: translateZ(0);
+    z-index: 2147483646;
+    box-shadow: 0 6px 24px var(--shadow-strong);
+}
+
+.label-constant {
+    font-size: 14px;
+    line-height: 1.2;
+    font-weight: 800;
+    z-index: 2147483647;
+}
+
+.canvas-overlay-title {
+    font-weight: 800;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.canvas-overlay-detail {
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-secondary);
+    white-space: normal;
+}
+
+.edge-tooltip-arrow {
+    color: var(--wire-hairline);
+}
+
+.edge-tooltip-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.edge-tooltip-list li {
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    line-height: 1.35;
+    border-left: 1px solid var(--wire-faint);
+    padding-left: 8px;
+}
+
+.edge-tooltip-pair {
+    color: var(--text-soft);
+}
+
+.edge-tooltip-symbols {
+    color: var(--text-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10.5px;
+    word-break: break-word;
+}
+
+.edge-tooltip-symbols--empty {
+    color: var(--text-muted);
+    font-style: italic;
+    font-family: inherit;
+}
+
+.edge-tooltip-more {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+/* ── Accessibility ─────────────────────────────────────────────────────── */
+
+@media (prefers-contrast: more) {
+
+    .react-flow__edge.selected .react-flow__edge-path,
+    .react-flow__edge.edge-linked .react-flow__edge-path {
+        stroke: var(--text-strong) !important;
+        stroke-width: calc(3px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    }
+
+    .react-flow__node.selected .file-node,
+    .react-flow__node.selected .folder-node {
+        box-shadow: 0 0 0 2px var(--text-strong) inset;
+    }
+}
+
+@media (forced-colors: active) {
+
+    .react-flow__edge.selected .react-flow__edge-path {
+        forced-color-adjust: none;
+        stroke: Highlight !important;
+    }
+
+    .react-flow__node.selected .file-node,
+    .react-flow__node.selected .folder-node,
+    .react-flow__node.node-linked .file-node,
+    .react-flow__node.node-linked .folder-node {
+        forced-color-adjust: none;
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+    }
+}
+
+/* ── Collapse button ── */
+.code-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.code-card-collapse-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--wire-faint);
+    color: var(--vscode-foreground, var(--text-primary));
+    border-radius: 4px;
+    width: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
+    height: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.code-card-collapse-btn:hover {
+    background: var(--tint-08);
+    border-color: var(--wire-hairline);
+}
+
+/* ── Description panel ── */
+.description-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    font-size: clamp(14px, calc(18px / var(--rf-zoom, 1)), 24px);
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+    user-select: none;
+    border-top: 1px solid var(--wire-faint);
+}
+
+.description-toggle:hover {
+    background: var(--tint-05);
+}
+
+.description-toggle-arrow {
+    font-size: clamp(10px, calc(14px / var(--rf-zoom, 1)), 20px);
+}
+
+.description-auto-badge {
+    margin-left: auto;
+    font-size: 9px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--wire-faint);
+    color: var(--text-secondary);
+}
+
+.description-body {
+    padding: 12px;
+}
+
+.description-text {
+    margin: 0;
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    line-height: 1.5;
+    cursor: text;
+    white-space: pre-wrap;
+    color: var(--vscode-foreground, var(--text-primary));
+}
+
+.description-text.description-auto {
+    font-style: italic;
+    color: var(--text-secondary-bright);
+}
+
+.description-placeholder {
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+    font-style: italic;
+}
+
+.description-textarea {
+    width: 100%;
+    min-height: calc(80px / var(--rf-zoom, 1));
+    resize: vertical;
+    font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
+    background: var(--vscode-input-background, var(--surface-raised));
+    color: var(--vscode-input-foreground, var(--text-primary));
+    border: 1px solid var(--wire-hairline);
+    border-radius: 3px;
+    padding: 8px;
+    box-sizing: border-box;
+    font-family: var(--vscode-font-family, inherit);
+}
+
+/* ── Node Collapsed State ── */
+.code-card--collapsed {
+    height: auto !important;
+    min-height: 0 !important;
+    padding-bottom: 8px;
+}
+
+/* ── Tag bar ── */
+.tag-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 8px;
+    border-top: 1px solid var(--wire-faint);
+    min-height: 28px;
+    align-items: center;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    color: var(--text-strong);
+    white-space: nowrap;
+}
+
+.tag-chip-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-strong-dim);
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.tag-chip-remove:hover {
+    color: var(--text-strong);
+}
+
+.tag-add-btn {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px dashed var(--vscode-descriptionForeground, var(--text-muted));
+    background: transparent;
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
+    cursor: pointer;
+}
+
+.tag-add-btn:hover {
+    border-color: var(--wire-hairline);
+}
+
+.tag-input {
+    width: 80px;
+    font-size: 10px;
+    padding: 1px 4px;
+    border-radius: 10px;
+    border: 1px solid var(--wire-hairline);
+    background: var(--vscode-input-background, var(--surface-raised));
+    color: var(--vscode-input-foreground, var(--text-primary));
+    outline: none;
+}

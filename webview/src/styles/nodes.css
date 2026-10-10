@@ -1,0 +1,501 @@
+/* Split from the original styles.css. Import order matters (tokens, nodes, panels, dialogs) - main.tsx owns it. */
+
+/* ── File node ─────────────────────────────────────────────────────────── */
+
+.file-node {
+    width: 100%;
+    height: 100%;
+    /* A column so the code area can claim whatever height the header,
+       description panel and tag bar leave over. Hardcoding the code height as
+       "100% minus the header" ignored the other two — both of which vary per
+       file — so the card overflowed the node and `overflow: hidden` clipped its
+       bottom, making long files unscrollable to the end by a different amount
+       each time. */
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--wire-faint);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--surface-raised) inset;
+    backface-visibility: hidden;
+    transform: translateZ(0);
+    position: relative;
+    container-type: inline-size;
+}
+
+.file-node-header {
+    background: var(--surface-raised);
+    padding: 6px 10px;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .3px;
+    border-bottom: 1px solid var(--wire-faint);
+    cursor: grab;
+    z-index: 2;
+    position: relative;
+}
+
+.code-card {
+    /* Take the leftover column space rather than guessing at it. `min-height: 0`
+       is required: without it a flex item refuses to shrink below its content
+       height, and `overflow: auto` would never produce a scrollbar.
+       Size containment is deliberately NOT used here — it makes the element
+       report a fixed intrinsic height, which is exactly what flex needs to
+       measure honestly. */
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    contain: layout paint;
+    z-index: 1;
+    position: relative;
+}
+
+/* Header, description and tags keep their natural height; only the code flexes. */
+.file-node > .file-node-header,
+.file-node > .description-panel,
+.file-node > .tag-bar {
+    flex: 0 0 auto;
+}
+
+.code-card .file-title {
+    display: none;
+}
+
+/* Shown when the host capped the preview at codeCanvas.maxPreviewBytes. Sticky
+   so it stays visible while the truncated body is scrolled. */
+.code-truncated-note {
+    position: sticky;
+    bottom: 0;
+    padding: 4px 10px;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: var(--text-secondary);
+    background: var(--gradient-truncated);
+    border-top: 1px solid var(--wire-faint);
+}
+
+pre.hljs {
+    margin: 0;
+    padding: 8px 10px 8px 56px;
+    /* leave space for gutter */
+    font-size: 12px;
+    line-height: 1.35;
+    position: relative;
+    counter-reset: line;
+}
+
+pre.hljs .code-line {
+    display: block;
+    counter-increment: line;
+    position: relative;
+}
+
+pre.hljs .code-line::before {
+    content: counter(line);
+    position: absolute;
+    left: -44px;
+    width: 36px;
+    text-align: right;
+    color: var(--text-faint);
+    opacity: 0.9;
+}
+
+pre.hljs .code-line.highlight {
+    background: var(--highlight-bg);
+    outline: 1px solid var(--highlight-border);
+}
+
+pre.hljs.wrap {
+    white-space: pre-wrap;
+}
+
+.preview {
+    font-size: 11px;
+    opacity: .8;
+    padding: 8px;
+}
+
+/* Placeholder body shown when code is hidden for performance */
+.node-placeholder-body {
+    /* Same leftover-space rule as .code-card — it replaces the code area when
+       zoomed out, so it must not assume the header is the only thing above it. */
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    opacity: 0.9;
+    cursor: grab;
+}
+
+/* The big zoom-aware label is drawn by `.node-placeholder-body::before`
+   (content: attr(data-label)). There used to be a second title element here,
+   which is why every zoomed-out node showed its name twice. */
+.node-placeholder-body::before {
+    content: attr(data-label);
+    display: block;
+    font-weight: 800;
+    font-size: clamp(22px, calc(440px / var(--rf-zoom, 1)), 72px);
+    color: var(--text-body);
+    opacity: 0.9;
+    margin-bottom: 8px;
+    text-wrap: balance;
+    text-align: center;
+}
+
+@container node-size (min-width: 600px) {
+    .node-placeholder-body::before {
+        font-size: clamp(28px, calc(660px / var(--rf-zoom, 1)), 92px);
+    }
+}
+
+/* ── Collapsed folder node ─────────────────────────────────────────────── */
+
+.folder-node {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--gradient-folder);
+    border: 1px solid var(--wire-faint);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: grab;
+}
+
+.folder-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--wire-faint);
+    background: var(--tint-03);
+}
+
+.folder-node-name {
+    font-weight: 700;
+    letter-spacing: .2px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folder-node-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    min-height: 0;
+}
+
+.folder-node-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.folder-badge {
+    font-size: clamp(10px, calc(12px / var(--rf-zoom, 1)), 16px);
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--wire-faint);
+    color: var(--text-soft);
+    white-space: nowrap;
+}
+
+.folder-badge--in {
+    border-color: var(--border-soft);
+}
+
+.folder-badge--out {
+    border-color: var(--border-soft);
+    color: var(--text-soft-bright);
+}
+
+.folder-node-description {
+    /* One line: the node shows the first sentence only, and a folder card is a
+       label, not a document. Detail belongs in the description panel. */
+    font-size: clamp(11px, calc(13px / var(--rf-zoom, 1)), 18px);
+    line-height: 1.4;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.folder-node-description.is-auto {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.folder-chevron {
+    background: transparent;
+    border: 1px solid var(--wire-faint);
+    border-radius: 6px;
+    color: var(--text-primary);
+    width: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
+    height: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
+    font-size: clamp(11px, calc(14px / var(--rf-zoom, 1)), 20px);
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.folder-chevron:hover {
+    border-color: var(--wire-hairline);
+    background: var(--tint-08);
+}
+
+.folder-chevron--empty {
+    visibility: hidden;
+}
+
+/* ── Group (expanded folder) container ─────────────────────────────────── */
+
+/* Single definition: the previous stylesheet declared this block three times
+   with conflicting values, which made the reserved header band ambiguous. */
+.react-flow__node-group {
+    background: var(--tint-025);
+    border: 1px solid var(--wire-faint);
+    border-radius: 14px;
+    min-width: 200px;
+    min-height: 150px;
+    cursor: grab;
+    pointer-events: auto;
+    /* NO padding here. Child nodes are siblings in the DOM positioned by
+       transform, so padding would not indent them — it would only push
+       `.group-node` (and with it the absolutely-positioned label) out of
+       place. The header band is reserved by GROUP_HEADER in layout.ts. */
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.react-flow__node-group:hover {
+    border-color: var(--border-medium);
+}
+
+/* file nodes should render above groups */
+.react-flow__node-file,
+.react-flow__node-folder {
+    z-index: 2;
+}
+
+.group-node {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.group-node[data-selected="true"]::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--wire-hairline);
+    border-radius: 14px;
+    pointer-events: none;
+    box-shadow: 0 0 12px var(--wire-glow);
+}
+
+.group-label {
+    position: absolute;
+    top: 10px;
+    left: 14px;
+    right: 14px;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-soft);
+    font-weight: 600;
+}
+
+.group-label-name {
+    font-weight: 700;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Zoom-aware labels ─────────────────────────────────────────────────── */
+
+.label-fixed {
+    font-size: clamp(var(--label-min-size), calc(12px / var(--rf-zoom, 1)), var(--label-max-size));
+    line-height: 1.2;
+}
+
+.file-node-header.label-fixed {
+    position: sticky;
+    top: 0;
+    background: var(--surface-raised);
+    z-index: 2;
+    font-size: clamp(16px, calc(24px / var(--rf-zoom, 1)), 28px);
+}
+
+.group-label.label-fixed,
+.folder-node-header.label-fixed {
+    font-size: clamp(16px, calc(22px / var(--rf-zoom, 1)), 26px);
+}
+
+/* ── Minimap ───────────────────────────────────────────────────────────── */
+
+.react-flow__minimap {
+    background: var(--surface-minimap) !important;
+    box-shadow: 0 0 0 1px var(--tint-06) inset;
+}
+
+.react-flow__minimap-mask {
+    fill: var(--tint-06) !important;
+}
+
+.react-flow__minimap-node {
+    fill: var(--tint-35) !important;
+    stroke: var(--tint-20) !important;
+}
+
+.react-flow__minimap-node.group {
+    display: none !important;
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────── */
+
+.react-flow__renderer,
+.react-flow__viewport {
+    will-change: transform;
+}
+
+.react-flow__node {
+    transition: transform 220ms var(--ease-smooth), opacity 160ms ease;
+    will-change: transform;
+}
+
+.react-flow__node.no-animate {
+    transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .react-flow__node {
+        transition: none !important;
+    }
+}
+
+.react-flow__viewport {
+    transition: none;
+}
+
+.react-flow__viewport.zoom-smooth {
+    transition: transform var(--zoom-duration) var(--ease-smooth);
+}
+
+.react-flow__viewport.no-animate {
+    transition: none !important;
+}
+
+/* ── Node hover / selection: hairline white, never a coloured tint ─────── */
+
+.react-flow__node:focus-within .file-node-header,
+.react-flow__node:focus-within .group-label {
+    outline: 1px solid var(--wire-hairline);
+    outline-offset: 2px;
+}
+
+.react-flow__node:hover .file-node-header,
+.react-flow__node:hover .group-label,
+.react-flow__node:hover .folder-node-header {
+    color: var(--text-strong);
+}
+
+.react-flow__node:hover .file-node,
+.react-flow__node:hover .folder-node {
+    border-color: var(--border-strong);
+}
+
+.react-flow__node:hover.react-flow__node-group {
+    border-color: var(--border-strong);
+}
+
+.react-flow__node.selected,
+.react-flow__node.node-linked {
+    filter: drop-shadow(0 0 0.35rem var(--wire-glow));
+}
+
+.react-flow__node.selected .file-node,
+.react-flow__node.selected .folder-node,
+.react-flow__node.node-linked .file-node,
+.react-flow__node.node-linked .folder-node {
+    border-color: var(--wire-hairline);
+    box-shadow: 0 0 0 1px var(--wire-hairline) inset;
+}
+
+.react-flow__node.selected.react-flow__node-group {
+    border-color: var(--wire-hairline);
+    background: var(--tint-04);
+}
+
+.react-flow__node:hover .label-fixed,
+.react-flow__node.selected .label-fixed {
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 0 var(--shadow-text-soft);
+}
+
+.react-flow__node:hover .file-node-header.label-fixed,
+.react-flow__node.selected .file-node-header.label-fixed,
+.react-flow__node.node-linked .file-node-header.label-fixed {
+    text-shadow: 0 2px 6px var(--shadow-text);
+    color: var(--text-strong);
+    background: var(--gradient-file-header);
+}
+
+.react-flow__node:hover .group-label.label-fixed,
+.react-flow__node.selected .group-label.label-fixed,
+.react-flow__node.node-linked .group-label.label-fixed {
+    text-shadow: 0 2px 6px var(--shadow-text);
+    color: var(--text-strong);
+}
+
+/* ── Edges: thin white wires ───────────────────────────────────────────── */
+
+.react-flow__edge .react-flow__edge-path {
+    stroke: var(--wire);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+    stroke: var(--wire-strong) !important;
+    stroke-width: calc(2px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 3px var(--wire-glow));
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+    stroke: var(--wire-strong) !important;
+    stroke-width: calc(2px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 4px var(--wire-glow));
+}
+
+.react-flow__edge.edge-linked .react-flow__edge-path {
+    stroke: var(--wire-hairline) !important;
+    stroke-width: calc(1.8px * max(1, 1 / var(--rf-zoom, 1))) !important;
+    filter: drop-shadow(0 0 4px var(--wire-glow));
+}
+
+.react-flow__arrowhead polyline,
+.react-flow__arrowhead path {
+    stroke: var(--wire-hairline);
+    fill: var(--wire-hairline);
+}
