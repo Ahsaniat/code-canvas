@@ -2,6 +2,11 @@
 
 All notable changes to the **Code Canvas** extension are documented in this file.
 
+## [0.2.2] - 2026-10-10
+
+### Fixed
+- Search works again: an infinite selection-callback render loop (~1700 renders/s) was starving deferred renders, so queries never reached the matcher. Selecting a result now reveals it - expanding collapsed folders - and animates the viewport to the node.
+
 ## [0.2.1] - 2026-10-10
 
 ### Changed
