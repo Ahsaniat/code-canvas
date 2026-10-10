@@ -2,6 +2,12 @@
 
 All notable changes to the **Code Canvas** extension are documented in this file.
 
+## [0.2.1] - 2026-10-10
+
+### Changed
+- Marketplace listing README rewritten as a user guide; build-from-source notes stay on GitHub
+- Install instructions and badges updated for the Marketplace and GitHub Releases
+
 ## [0.2.0] - 2026-10-10
 
 ### Added
