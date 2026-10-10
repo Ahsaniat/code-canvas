@@ -16,6 +16,18 @@ The canvas is **collapse-first**: folders open as compact chips carrying the agg
 - **Resizable nodes** - select a file node and drag its corners to give it more room; the size is remembered
 - **Git-aware** - open changed files, live refresh on save
 
+## Screenshots
+
+![Canvas overview](__doc__/demo_photos/Screenshot_20261010_142932.png)
+
+| Selection & resize handles | Inline code preview |
+| --- | --- |
+| ![Selection and resize handles](__doc__/demo_photos/Screenshot_20261010_143001.png) | ![Inline code preview](__doc__/demo_photos/Screenshot_20261010_143056.png) |
+
+| File descriptions | Expanded description & resized node |
+| --- | --- |
+| ![File descriptions](__doc__/demo_photos/Screenshot_20261010_143116.png) | ![Resized node](__doc__/demo_photos/Screenshot_20261010_143304.png) |
+
 ## Status & Disclaimer (by original author wallxack)
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
 
