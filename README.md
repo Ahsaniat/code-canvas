@@ -1,7 +1,8 @@
 # Code Canvas - Visual Code Graph for VS Code
 
-[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/ahsaniat.code-canvas-oss?label=marketplace&color=0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/ahsaniat.code-canvas-oss?color=0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
+[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-install-0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
+[![Open VSX](https://img.shields.io/open-vsx/v/ahsaniat/code-canvas-oss?label=open%20vsx&color=0b0e12)](https://open-vsx.org/extension/ahsaniat/code-canvas-oss)
+[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/ahsaniat/code-canvas-oss?label=downloads&color=0b0e12)](https://open-vsx.org/extension/ahsaniat/code-canvas-oss)
 [![GitHub release](https://img.shields.io/github/v/release/Ahsaniat/code-canvas?label=release&color=0b0e12)](https://github.com/Ahsaniat/code-canvas/releases)
 
 ## Install
