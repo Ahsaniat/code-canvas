@@ -20,6 +20,54 @@
 
     --surface: #0d1117;
     --surface-raised: #0b1220;
+    --surface-deep: #0b0e12;
+    --surface-panel: #111827;
+    --surface-minimap: #0f1115;
+
+    /* Text hierarchy. */
+    --text-primary: #e5e7eb;
+    --text-strong: #ffffff;
+    --text-body: #cdd6f4;
+    --text-soft: #cbd5e1;
+    --text-soft-bright: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-secondary-bright: #a8b3c4;
+    --text-muted: #64748b;
+    --text-faint: #6b7280;
+    --text-dim: #9ca3af;
+    --text-strong-dim: rgba(255, 255, 255, 0.7);
+
+    /* Borders and white tints. */
+    --border: #1f2937;
+    --border-strong: rgba(255, 255, 255, 0.45);
+    --border-medium: rgba(255, 255, 255, 0.3);
+    --border-soft: rgba(255, 255, 255, 0.25);
+    --tint-03: rgba(255, 255, 255, 0.03);
+    --tint-04: rgba(255, 255, 255, 0.04);
+    --tint-05: rgba(255, 255, 255, 0.05);
+    --tint-06: rgba(255, 255, 255, 0.06);
+    --tint-08: rgba(255, 255, 255, 0.08);
+    --tint-10: rgba(255, 255, 255, 0.1);
+    --tint-12: rgba(255, 255, 255, 0.12);
+    --tint-14: rgba(255, 255, 255, 0.14);
+    --tint-20: rgba(255, 255, 255, 0.2);
+    --tint-35: rgba(255, 255, 255, 0.35);
+
+    /* Overlays, shadows and status. */
+    --overlay: rgba(2, 6, 23, 0.94);
+    --overlay-soft: rgba(2, 6, 23, 0.92);
+    --shadow-strong: rgba(0, 0, 0, 0.55);
+    --shadow: rgba(0, 0, 0, 0.5);
+    --shadow-text: rgba(0, 0, 0, 0.35);
+    --shadow-text-soft: rgba(0, 0, 0, 0.25);
+    --highlight-bg: rgba(255, 214, 10, 0.15);
+    --highlight-border: rgba(255, 214, 10, 0.35);
+    --status-error: #f87171;
+
+    /* Gradients. */
+    --gradient-folder: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+    --gradient-file-header: linear-gradient(180deg, #111a2b, #0b1220);
+    --gradient-truncated: linear-gradient(180deg, rgba(13, 17, 23, 0), rgba(13, 17, 23, 0.92));
     --label-min-size: 13px;
     --label-max-size: 18px;
 }
@@ -29,8 +77,8 @@ html,
 #root {
     margin: 0;
     height: 100%;
-    background: #0b0e12;
-    color: #cdd6f4;
+    background: var(--surface-deep);
+    color: var(--text-body);
     font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Inter, sans-serif;
 }
 
@@ -50,9 +98,9 @@ html,
 
 .toolbar button,
 .toolbar select {
-    background: #111827;
-    border: 1px solid #1f2937;
-    color: #e5e7eb;
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
     padding: 6px 10px;
     border-radius: 8px;
     cursor: pointer;
@@ -80,7 +128,7 @@ html,
     border: 1px solid var(--wire-faint);
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 0 0 1px #0b1220 inset;
+    box-shadow: 0 0 0 1px var(--surface-raised) inset;
     backface-visibility: hidden;
     transform: translateZ(0);
     position: relative;
@@ -134,8 +182,8 @@ html,
     font-size: 10px;
     letter-spacing: 0.02em;
     text-align: center;
-    color: #94a3b8;
-    background: linear-gradient(180deg, rgba(13, 17, 23, 0), rgba(13, 17, 23, 0.92));
+    color: var(--text-secondary);
+    background: var(--gradient-truncated);
     border-top: 1px solid var(--wire-faint);
 }
 
@@ -161,13 +209,13 @@ pre.hljs .code-line::before {
     left: -44px;
     width: 36px;
     text-align: right;
-    color: #6b7280;
+    color: var(--text-faint);
     opacity: 0.9;
 }
 
 pre.hljs .code-line.highlight {
-    background: rgba(255, 214, 10, 0.15);
-    outline: 1px solid rgba(255, 214, 10, 0.35);
+    background: var(--highlight-bg);
+    outline: 1px solid var(--highlight-border);
 }
 
 pre.hljs.wrap {
@@ -190,7 +238,7 @@ pre.hljs.wrap {
     place-items: center;
     align-content: center;
     gap: 6px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 12px;
     opacity: 0.9;
     cursor: grab;
@@ -207,7 +255,7 @@ pre.hljs.wrap {
     display: block;
     font-weight: 800;
     font-size: clamp(22px, calc(440px / var(--rf-zoom, 1)), 72px);
-    color: #cdd6f4;
+    color: var(--text-body);
     opacity: 0.9;
     margin-bottom: 8px;
     text-wrap: balance;
@@ -227,7 +275,7 @@ pre.hljs.wrap {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+    background: var(--gradient-folder);
     border: 1px solid var(--wire-faint);
     border-radius: 12px;
     overflow: hidden;
@@ -240,13 +288,13 @@ pre.hljs.wrap {
     gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--wire-faint);
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--tint-03);
 }
 
 .folder-node-name {
     font-weight: 700;
     letter-spacing: .2px;
-    color: #e5e7eb;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -272,17 +320,17 @@ pre.hljs.wrap {
     padding: 2px 8px;
     border-radius: 999px;
     border: 1px solid var(--wire-faint);
-    color: #cbd5e1;
+    color: var(--text-soft);
     white-space: nowrap;
 }
 
 .folder-badge--in {
-    border-color: rgba(255, 255, 255, 0.25);
+    border-color: var(--border-soft);
 }
 
 .folder-badge--out {
-    border-color: rgba(255, 255, 255, 0.25);
-    color: #e2e8f0;
+    border-color: var(--border-soft);
+    color: var(--text-soft-bright);
 }
 
 .folder-node-description {
@@ -290,7 +338,7 @@ pre.hljs.wrap {
        label, not a document. Detail belongs in the description panel. */
     font-size: clamp(11px, calc(13px / var(--rf-zoom, 1)), 18px);
     line-height: 1.4;
-    color: #94a3b8;
+    color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -305,7 +353,7 @@ pre.hljs.wrap {
     background: transparent;
     border: 1px solid var(--wire-faint);
     border-radius: 6px;
-    color: #e5e7eb;
+    color: var(--text-primary);
     width: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
     height: clamp(20px, calc(26px / var(--rf-zoom, 1)), 34px);
     font-size: clamp(11px, calc(14px / var(--rf-zoom, 1)), 20px);
@@ -320,7 +368,7 @@ pre.hljs.wrap {
 
 .folder-chevron:hover {
     border-color: var(--wire-hairline);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-08);
 }
 
 .folder-chevron--empty {
@@ -332,7 +380,7 @@ pre.hljs.wrap {
 /* Single definition: the previous stylesheet declared this block three times
    with conflicting values, which made the reserved header band ambiguous. */
 .react-flow__node-group {
-    background: rgba(255, 255, 255, 0.025);
+    background: var(--tint-025);
     border: 1px solid var(--wire-faint);
     border-radius: 14px;
     min-width: 200px;
@@ -348,7 +396,7 @@ pre.hljs.wrap {
 }
 
 .react-flow__node-group:hover {
-    border-color: rgba(255, 255, 255, 0.3);
+    border-color: var(--border-medium);
 }
 
 /* file nodes should render above groups */
@@ -383,13 +431,13 @@ pre.hljs.wrap {
     align-items: center;
     gap: 8px;
     font-size: 12px;
-    color: #cbd5e1;
+    color: var(--text-soft);
     font-weight: 600;
 }
 
 .group-label-name {
     font-weight: 700;
-    color: #e5e7eb;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -418,17 +466,17 @@ pre.hljs.wrap {
 /* ── Minimap ───────────────────────────────────────────────────────────── */
 
 .react-flow__minimap {
-    background: #0f1115 !important;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+    background: var(--surface-minimap) !important;
+    box-shadow: 0 0 0 1px var(--tint-06) inset;
 }
 
 .react-flow__minimap-mask {
-    fill: rgba(255, 255, 255, 0.06) !important;
+    fill: var(--tint-06) !important;
 }
 
 .react-flow__minimap-node {
-    fill: rgba(255, 255, 255, 0.35) !important;
-    stroke: rgba(255, 255, 255, 0.2) !important;
+    fill: var(--tint-35) !important;
+    stroke: var(--tint-20) !important;
 }
 
 .react-flow__minimap-node.group {
@@ -480,16 +528,16 @@ pre.hljs.wrap {
 .react-flow__node:hover .file-node-header,
 .react-flow__node:hover .group-label,
 .react-flow__node:hover .folder-node-header {
-    color: #ffffff;
+    color: var(--text-strong);
 }
 
 .react-flow__node:hover .file-node,
 .react-flow__node:hover .folder-node {
-    border-color: rgba(255, 255, 255, 0.45);
+    border-color: var(--border-strong);
 }
 
 .react-flow__node:hover.react-flow__node-group {
-    border-color: rgba(255, 255, 255, 0.45);
+    border-color: var(--border-strong);
 }
 
 .react-flow__node.selected,
@@ -507,29 +555,29 @@ pre.hljs.wrap {
 
 .react-flow__node.selected.react-flow__node-group {
     border-color: var(--wire-hairline);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--tint-04);
 }
 
 .react-flow__node:hover .label-fixed,
 .react-flow__node.selected .label-fixed {
     font-weight: 800;
     letter-spacing: 0.2px;
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 0 var(--shadow-text-soft);
 }
 
 .react-flow__node:hover .file-node-header.label-fixed,
 .react-flow__node.selected .file-node-header.label-fixed,
 .react-flow__node.node-linked .file-node-header.label-fixed {
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-    color: #fafafa;
-    background: linear-gradient(180deg, #111a2b, #0b1220);
+    text-shadow: 0 2px 6px var(--shadow-text);
+    color: var(--text-strong);
+    background: var(--gradient-file-header);
 }
 
 .react-flow__node:hover .group-label.label-fixed,
 .react-flow__node.selected .group-label.label-fixed,
 .react-flow__node.node-linked .group-label.label-fixed {
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-    color: #ffffff;
+    text-shadow: 0 2px 6px var(--shadow-text);
+    color: var(--text-strong);
 }
 
 /* ── Edges: thin white wires ───────────────────────────────────────────── */
@@ -572,14 +620,14 @@ pre.hljs.wrap {
     position: fixed;
     max-width: 460px;
     padding: 8px 10px;
-    background: rgba(2, 6, 23, 0.94);
+    background: var(--overlay);
     border: 1px solid var(--wire-hairline);
     border-radius: 8px;
-    color: #e5e7eb;
+    color: var(--text-primary);
     pointer-events: none;
     transform: translateZ(0);
     z-index: 2147483646;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 6px 24px var(--shadow-strong);
 }
 
 .label-constant {
@@ -601,7 +649,7 @@ pre.hljs.wrap {
     margin-top: 4px;
     font-size: 11px;
     font-weight: 400;
-    color: #94a3b8;
+    color: var(--text-secondary);
     white-space: normal;
 }
 
@@ -628,18 +676,18 @@ pre.hljs.wrap {
 }
 
 .edge-tooltip-pair {
-    color: #cbd5e1;
+    color: var(--text-soft);
 }
 
 .edge-tooltip-symbols {
-    color: #ffffff;
+    color: var(--text-strong);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 10.5px;
     word-break: break-word;
 }
 
 .edge-tooltip-symbols--empty {
-    color: #64748b;
+    color: var(--text-muted);
     font-style: italic;
     font-family: inherit;
 }
@@ -647,7 +695,7 @@ pre.hljs.wrap {
 .edge-tooltip-more {
     margin-top: 6px;
     font-size: 10px;
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 /* ── Accessibility ─────────────────────────────────────────────────────── */
@@ -656,13 +704,13 @@ pre.hljs.wrap {
 
     .react-flow__edge.selected .react-flow__edge-path,
     .react-flow__edge.edge-linked .react-flow__edge-path {
-        stroke: #ffffff !important;
+        stroke: var(--text-strong) !important;
         stroke-width: calc(3px * max(1, 1 / var(--rf-zoom, 1))) !important;
     }
 
     .react-flow__node.selected .file-node,
     .react-flow__node.selected .folder-node {
-        box-shadow: 0 0 0 2px #ffffff inset;
+        box-shadow: 0 0 0 2px var(--text-strong) inset;
     }
 }
 
@@ -694,7 +742,7 @@ pre.hljs.wrap {
     margin-left: auto;
     background: transparent;
     border: 1px solid var(--wire-faint);
-    color: var(--vscode-foreground, #e5e7eb);
+    color: var(--vscode-foreground, var(--text-primary));
     border-radius: 4px;
     width: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
     height: clamp(24px, calc(32px / var(--rf-zoom, 1)), 40px);
@@ -708,7 +756,7 @@ pre.hljs.wrap {
 }
 
 .code-card-collapse-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-08);
     border-color: var(--wire-hairline);
 }
 
@@ -720,13 +768,13 @@ pre.hljs.wrap {
     padding: 8px 12px;
     font-size: clamp(14px, calc(18px / var(--rf-zoom, 1)), 24px);
     cursor: pointer;
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
     user-select: none;
     border-top: 1px solid var(--wire-faint);
 }
 
 .description-toggle:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--tint-05);
 }
 
 .description-toggle-arrow {
@@ -741,7 +789,7 @@ pre.hljs.wrap {
     padding: 1px 6px;
     border-radius: 999px;
     border: 1px solid var(--wire-faint);
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 .description-body {
@@ -754,16 +802,16 @@ pre.hljs.wrap {
     line-height: 1.5;
     cursor: text;
     white-space: pre-wrap;
-    color: var(--vscode-foreground, #e5e7eb);
+    color: var(--vscode-foreground, var(--text-primary));
 }
 
 .description-text.description-auto {
     font-style: italic;
-    color: #a8b3c4;
+    color: var(--text-secondary-bright);
 }
 
 .description-placeholder {
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
     font-style: italic;
 }
 
@@ -772,8 +820,8 @@ pre.hljs.wrap {
     min-height: calc(80px / var(--rf-zoom, 1));
     resize: vertical;
     font-size: clamp(16px, calc(20px / var(--rf-zoom, 1)), 28px);
-    background: var(--vscode-input-background, #0b1220);
-    color: var(--vscode-input-foreground, #e5e7eb);
+    background: var(--vscode-input-background, var(--surface-raised));
+    color: var(--vscode-input-foreground, var(--text-primary));
     border: 1px solid var(--wire-hairline);
     border-radius: 3px;
     padding: 8px;
@@ -806,14 +854,14 @@ pre.hljs.wrap {
     padding: 1px 6px;
     border-radius: 10px;
     font-size: 10px;
-    color: #fff;
+    color: var(--text-strong);
     white-space: nowrap;
 }
 
 .tag-chip-remove {
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-strong-dim);
     cursor: pointer;
     padding: 0;
     font-size: 12px;
@@ -821,16 +869,16 @@ pre.hljs.wrap {
 }
 
 .tag-chip-remove:hover {
-    color: #fff;
+    color: var(--text-strong);
 }
 
 .tag-add-btn {
     font-size: 10px;
     padding: 1px 6px;
     border-radius: 10px;
-    border: 1px dashed var(--vscode-descriptionForeground, #64748b);
+    border: 1px dashed var(--vscode-descriptionForeground, var(--text-muted));
     background: transparent;
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
     cursor: pointer;
 }
 
@@ -844,8 +892,8 @@ pre.hljs.wrap {
     padding: 1px 4px;
     border-radius: 10px;
     border: 1px solid var(--wire-hairline);
-    background: var(--vscode-input-background, #0b1220);
-    color: var(--vscode-input-foreground, #e5e7eb);
+    background: var(--vscode-input-background, var(--surface-raised));
+    color: var(--vscode-input-foreground, var(--text-primary));
     outline: none;
 }
 
@@ -861,8 +909,8 @@ pre.hljs.wrap {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #111827;
-    border: 1px solid #1f2937;
+    background: var(--surface-panel);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 0 6px;
 }
@@ -882,21 +930,21 @@ pre.hljs.wrap {
     background: transparent;
     border: none;
     outline: none;
-    color: #e5e7eb;
+    color: var(--text-primary);
     font: inherit;
     font-size: 12px;
     padding: 6px 2px;
 }
 
 .search-input::placeholder {
-    color: #6b7280;
+    color: var(--text-faint);
 }
 
 .toolbar .search-clear,
 .toolbar .search-filter-toggle {
     background: transparent;
     border: 1px solid transparent;
-    color: #9ca3af;
+    color: var(--text-dim);
     padding: 2px 6px;
     border-radius: 6px;
     font-size: 11px;
@@ -906,13 +954,13 @@ pre.hljs.wrap {
 .toolbar .search-clear:hover,
 .toolbar .search-filter-toggle:hover {
     border-color: var(--wire-faint);
-    color: #e5e7eb;
+    color: var(--text-primary);
 }
 
 .toolbar .search-filter-toggle--active {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--tint-14);
     border-color: var(--wire-hairline);
-    color: #ffffff;
+    color: var(--text-strong);
 }
 
 .search-results {
@@ -925,7 +973,7 @@ pre.hljs.wrap {
     background: var(--surface-raised);
     border: 1px solid var(--wire-faint);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 8px 24px var(--shadow-strong);
     padding: 4px;
 }
 
@@ -940,11 +988,11 @@ pre.hljs.wrap {
     border-radius: 6px;
     padding: 5px 7px;
     font-size: 12px;
-    color: #cdd6f4;
+    color: var(--text-body);
 }
 
 .toolbar .search-hit--active {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--tint-10);
     border-color: var(--wire-hairline);
 }
 
@@ -997,7 +1045,7 @@ pre.hljs.wrap {
 
 .tag-filter-label {
     font-size: 11px;
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
 }
 
 .tag-filter-pill {
@@ -1006,13 +1054,13 @@ pre.hljs.wrap {
     border-radius: 10px;
     border: 1px solid var(--wire-faint);
     background: transparent;
-    color: var(--vscode-foreground, #e5e7eb);
+    color: var(--vscode-foreground, var(--text-primary));
     cursor: pointer;
 }
 
 .tag-filter-pill--active {
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff;
+    background: var(--tint-14);
+    color: var(--text-strong);
     border-color: var(--wire-hairline);
 }
 
@@ -1023,7 +1071,7 @@ pre.hljs.wrap {
     border-radius: 4px;
     border: 1px solid var(--wire-hairline);
     background: transparent;
-    color: #e5e7eb;
+    color: var(--text-primary);
     cursor: pointer;
 }
 
@@ -1031,9 +1079,9 @@ pre.hljs.wrap {
     font-size: 10px;
     padding: 2px 6px;
     border-radius: 4px;
-    border: 1px solid var(--vscode-errorForeground, #f87171);
+    border: 1px solid var(--vscode-errorForeground, var(--status-error));
     background: transparent;
-    color: var(--vscode-errorForeground, #f87171);
+    color: var(--vscode-errorForeground, var(--status-error));
     cursor: pointer;
 }
 
@@ -1046,12 +1094,12 @@ pre.hljs.wrap {
     max-height: 40vh;
     display: flex;
     flex-direction: column;
-    background: rgba(2, 6, 23, 0.92);
+    background: var(--overlay-soft);
     border: 1px solid var(--wire-hairline);
     border-radius: 8px;
     z-index: 2147483646;
     overflow: hidden;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 6px 24px var(--shadow);
 }
 
 .refs-panel-header {
@@ -1061,21 +1109,21 @@ pre.hljs.wrap {
     padding: 6px 10px;
     font-size: 12px;
     font-weight: 700;
-    color: #e5e7eb;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--tint-08);
 }
 
 .refs-panel-header button {
     background: transparent;
     border: none;
-    color: #9ca3af;
+    color: var(--text-dim);
     cursor: pointer;
     font-size: 14px;
     line-height: 1;
 }
 
 .refs-panel-header button:hover {
-    color: #fff;
+    color: var(--text-strong);
 }
 
 .refs-panel-list {
@@ -1086,7 +1134,7 @@ pre.hljs.wrap {
 .refs-panel-empty {
     padding: 8px 10px;
     font-size: 11px;
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
 }
 
 .refs-panel-item {
@@ -1095,7 +1143,7 @@ pre.hljs.wrap {
     text-align: left;
     background: transparent;
     border: none;
-    color: #cdd6f4;
+    color: var(--text-body);
     font-size: 11px;
     padding: 4px 8px;
     border-radius: 4px;
@@ -1106,7 +1154,7 @@ pre.hljs.wrap {
 }
 
 .refs-panel-item:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--tint-12);
 }
 
 /* One-line description shown while the panel is collapsed. Clipped to a single
@@ -1116,7 +1164,7 @@ pre.hljs.wrap {
     padding: 2px 10px 6px;
     font-size: 11px;
     line-height: 1.35;
-    color: var(--vscode-descriptionForeground, #94a3b8);
+    color: var(--vscode-descriptionForeground, var(--text-secondary));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
