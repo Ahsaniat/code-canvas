@@ -1,6 +1,6 @@
 {
-    "name": "code-canvas",
-    "displayName": "Code Canvas",
+    "name": "code-canvas-oss",
+    "displayName": "Code Canvas OSS",
     "description": "Interactive canvas for your codebase: a file and folder graph with inline code previews, search, descriptions and resizable nodes.",
     "publisher": "ahsaniat",
     "version": "0.2.0",

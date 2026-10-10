@@ -1,6 +1,6 @@
 # Publishing to the Visual Studio Marketplace
 
-First release target: **0.2.0** · Item name: `ahsaniat.code-canvas`
+First release target: **0.2.0** · Item name: `ahsaniat.code-canvas-oss`
 
 ## Requirements checklist
 
@@ -43,8 +43,8 @@ npx vsce publish --packagePath code-canvas-0.2.0.vsix -p <PAT>
 
 ## After publishing
 
-- Marketplace page: <https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas>
-- Install from the Marketplace: `code --install-extension ahsaniat.code-canvas`
+- Marketplace page: <https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss>
+- Install from the Marketplace: `code --install-extension ahsaniat.code-canvas-oss`
 - README images: vsce rewrites relative links to
   `https://github.com/Ahsaniat/code-canvas/raw/HEAD/...`, so the files under
   `__doc__/demo_photos/` must exist on the default branch (`master`).
@@ -60,6 +60,7 @@ npx vsce publish --packagePath code-canvas-0.2.0.vsix -p <PAT>
 | --- | --- |
 | `The personal access token verification has failed` | PAT lacks **Marketplace → Manage**, is scoped to a single organization, or expired |
 | `Version already exists` | Bump the version in `extension/package.json` |
+| `The extension '<name>' already exists in the Marketplace` | Extension names are globally unique; pick another `name` (current: `code-canvas-oss`) |
 | `Couldn't detect the repository` | `repository` missing from `package.json` (it is set) |
 | Icon rejected | Must be a square PNG, at least 128×128 (`extension/icon.png` is 256×256) |
 | README images broken | Files missing on the default branch; check the rewritten `raw/HEAD` URL |
