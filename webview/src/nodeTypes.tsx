@@ -139,7 +139,6 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
         return () => observer.disconnect();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [collapsed, path]);
-
     return (
         <>
             {/* Sibling of the card: `.file-node` has overflow hidden, which
