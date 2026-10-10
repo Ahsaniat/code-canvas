@@ -48,7 +48,6 @@ export type GraphEdge = {
     id: string;
     source: string;
     target: string;
-    kind: 'import' | 'call' | 'ref';
     sourceLine?: number;
     targetLine?: number;
     links?: EdgeLink[];
@@ -56,8 +55,9 @@ export type GraphEdge = {
 
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] };
 
-/** Auto-generated (never user-authored) descriptions keyed by absolute path. */
-export type AutoDescriptions = Record<string, { autoDescription: string; kind: 'file' | 'folder' }>;
+// Auto-generated descriptions keyed by absolute path live in the shared
+// protocol module (re-exported here for existing importers).
+export type { AutoDescriptions } from '../../shared/protocol';
 
 /**
  * Load the built webview HTML and rewrite asset URLs for the VS Code webview.

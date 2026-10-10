@@ -1,21 +1,3 @@
-export interface FileMeta {
-  /** User-authored description. ALWAYS wins over `autoDescription`. */
-  description?: string;
-  /**
-   * Heuristically generated description (doc comment / export summary). Stored
-   * in a separate field so regeneration can never clobber the manual one.
-   */
-  autoDescription?: string;
-  autoDescriptionKind?: 'file' | 'folder';
-  tags?: string[];
-  collapsed?: boolean;
-  descriptionExpanded?: boolean;
-  /** User-set node size (NodeResizer). Overrides the content-derived size. */
-  width?: number;
-  height?: number;
-}
-
-export interface MetaFile {
-  version: 1;
-  files: Record<string, FileMeta>;  // key = absolute path of the file or folder
-}
+// The protocol shapes live in `shared/protocol.ts`; re-exported so existing
+// imports keep working and the host/webview copies cannot drift.
+export type { FileMeta, MetaFile } from '../../../shared/protocol';
