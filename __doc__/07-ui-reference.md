@@ -16,6 +16,8 @@
 
 ## Keybindings
 
+Handled inside the webview, so they only apply while the canvas has focus; they never intercept typing in the editor.
+
 | Key | Action |
 | --- | --- |
 | `Shift+1` | Radial layout |

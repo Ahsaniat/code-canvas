@@ -86,6 +86,8 @@ Or search **Code Canvas OSS** in the Extensions view. VSIX builds are also attac
 
 ## Keybindings
 
+These apply while the canvas has focus and are handled inside it, so they never intercept typing in the editor.
+
 - `⇧O` - Open Changed Files
 - `⇧+` - Load 25 More
 - `⇧1` / `⇧2` / `⇧3` / `⇧4` - Layout: Radial / Dagre / ELK / Force

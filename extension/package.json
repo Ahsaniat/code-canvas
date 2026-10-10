@@ -3,7 +3,7 @@
     "displayName": "Code Canvas OSS",
     "description": "Interactive canvas for your codebase: a file and folder graph with inline code previews, search, descriptions and resizable nodes.",
     "publisher": "ahsaniat",
-    "version": "0.2.2",
+    "version": "0.3.0",
     "license": "MIT",
     "icon": "icon.png",
     "repository": {
@@ -84,36 +84,6 @@
             {
                 "command": "codeCanvas.loadMore",
                 "title": "Code Canvas: Load 25 More"
-            }
-        ],
-        "keybindings": [
-            {
-                "command": "codeCanvas.openChanged",
-                "key": "shift+o"
-            },
-            {
-                "command": "codeCanvas.loadMore",
-                "key": "shift+plus"
-            },
-            {
-                "command": "codeCanvas.layout.radial",
-                "key": "shift+1"
-            },
-            {
-                "command": "codeCanvas.layout.dagre",
-                "key": "shift+2"
-            },
-            {
-                "command": "codeCanvas.layout.elk",
-                "key": "shift+3"
-            },
-            {
-                "command": "codeCanvas.layout.force",
-                "key": "shift+4"
-            },
-            {
-                "command": "codeCanvas.toggleRefs",
-                "key": "r"
             }
         ],
         "configuration": {

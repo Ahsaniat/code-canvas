@@ -10,7 +10,7 @@ import {
     type GraphModel, type ProjectedEdge, type ProjectedNode, type RawEdge, type RawNode,
 } from './model/graphModel';
 import { buildSearchIndex, matchedWithAncestors, searchNodes, type SearchHit } from './model/search';
-import { useMetaStore } from './store/metaStore';
+import { useMetaStore } from './store/metaStore'; 
 import { TagFilterToolbar } from './components/TagFilterToolbar';
 import { SearchBox, SearchBoxHandle } from './components/SearchBox';
 import { HoverOverlay, HoverOverlayHandle } from './components/HoverOverlay';
@@ -143,6 +143,14 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 /** Results shown in the dropdown; the filter set is not capped. */
 const SEARCH_RESULT_LIMIT = 40;
+
+/** ⇧1-4 layout shortcuts, keyed by physical digit so shifted symbols (!@#$) match too. */
+const SHIFT_DIGIT_ALGO: Record<string, LayoutAlgo> = {
+    Digit1: 'radial',
+    Digit2: 'dagre',
+    Digit3: 'elk',
+    Digit4: 'force',
+};
 
 type PersistedState = { expanded?: string[]; algo?: string; hidden?: string[] };
 
@@ -738,6 +746,50 @@ export default function App() {
         return () => window.removeEventListener('keydown', onKey);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedIds]);
+
+    // Canvas shortcuts live here, not in VS Code keybindings.
+    //
+    // They used to be contributed keybindings with no `when` scope, so single
+    // keys (r, shift+o, shift+plus, shift+1..4) were swallowed in every editor
+    // window - typing `r` simply did not work until the extension was
+    // uninstalled. Handling them in the webview keeps them canvas-only, and
+    // isTypingTarget keeps the search box, description and tag inputs untouched.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (isTypingTarget(e.target)) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const key = e.key;
+
+            if (key === 'r' || key === 'R') {
+                e.preventDefault();
+                setShowRefs(s => !s);
+                return;
+            }
+            if (!e.shiftKey) return;
+
+            if (key === 'O' || key === 'o' || e.code === 'KeyO') {
+                e.preventDefault();
+                vscode?.postMessage({ type: 'requestChanged' });
+                return;
+            }
+            if (key === '+' || e.code === 'Equal') {
+                e.preventDefault();
+                vscode?.postMessage({ type: 'loadMore' });
+                return;
+            }
+            const algo = SHIFT_DIGIT_ALGO[e.code];
+            if (algo) {
+                e.preventDefault();
+                setAlgo(algo);
+                algoRef.current = algo;
+                void runLayout(algo);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+        // runLayout/algoRef are ref-based; no re-registration needed.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         // Guarded like every other global shortcut: without this, a space in the
