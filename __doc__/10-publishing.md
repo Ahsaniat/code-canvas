@@ -13,6 +13,7 @@ Current release: **0.2.2** · Item name: `ahsaniat.code-canvas-oss`
 - [ ] `README.md`, `CHANGELOG.md`, `SUPPORT.md`, `LICENSE`, `icon.png` in `extension/`
 - [ ] Version bumped since the last publish (the Marketplace rejects duplicate versions)
 - [ ] No source maps in the VSIX and no `private: true`
+- [ ] For CD: `VSCE_PAT` (and optional `OVSX_PAT`) secrets plus the `marketplace` environment exist; release tags are `v<version>`
 
 ## One-time setup
 
@@ -24,6 +25,26 @@ Current release: **0.2.2** · Item name: `ahsaniat.code-canvas-oss`
 3. **Authenticate vsce:** `npx vsce login ahsaniat` (paste the PAT). For one-off use, pass `-p <PAT>` instead.
 
 ## Publish
+
+### Automated (CD)
+
+`.github/workflows/release.yml` publishes when a GitHub release is published:
+
+1. checks out the released tag, `npm ci`, full build
+2. **version guard** — the tag must be `v<version>` or `<version>` and match `extension/package.json`
+3. packages and publishes the VSIX to the Visual Studio Marketplace (`VSCE_PAT`)
+4. publishes to Open VSX if `OVSX_PAT` is set (otherwise skips)
+5. attaches the VSIX to the GitHub release
+
+One-time setup for CD:
+
+- Repository secrets: `VSCE_PAT` (required, same PAT as below) and `OVSX_PAT`
+  (optional; create at <https://open-vsx.org> → *Settings → Access Tokens*)
+- Recommended: Settings → Environments → new environment **`marketplace`** with a
+  required reviewer, so releasing needs an approval click
+- Release tag convention: **`v<version>`** (e.g. `v0.2.2`). The guard rejects anything else.
+
+### Manual fallback
 
 ```bash
 # from the repo root
