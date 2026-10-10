@@ -211,6 +211,10 @@ export default function App() {
     const gesturePannedRef = useRef<boolean>(false);
     const wheelCooldownUntilRef = useRef<number>(0);
     const isDraggingViewRef = useRef<boolean>(false);
+    // True while the current viewport gesture started inside the minimap.
+    // Those pans move at the minimap scale factor, so their viewport deltas
+    // must never feed the fling velocity sampler.
+    const minimapPanRef = useRef<boolean>(false);
     const moveFrameRef = useRef<number | null>(null);
     const pendingVpRef = useRef<any | null>(null);
 
@@ -1066,13 +1070,18 @@ export default function App() {
                         // Routing happens exactly once per drag, on release — never per frame.
                         rerouteFromCurrentPositions();
                     }}
-                    onMoveStart={() => {
+                    onMoveStart={(event) => {
                         cancelFling();
                         moveSamplesRef.current = [];
                         gestureZoomedRef.current = false;
                         gesturePannedRef.current = false;
                         zoomActiveRef.current = false;
-                        lastInputRef.current = 'drag';
+                        // A gesture that starts on the minimap is a navigation
+                        // shortcut, not a canvas drag: mark it so the fling
+                        // detector ignores it entirely.
+                        const target = (event?.target ?? null) as Element | null;
+                        minimapPanRef.current = !!(target && typeof target.closest === 'function' && target.closest('.react-flow__minimap'));
+                        lastInputRef.current = minimapPanRef.current ? null : 'drag';
                         isDraggingViewRef.current = true;
                         try { document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth'); } catch { }
                     }}
@@ -1108,7 +1117,10 @@ export default function App() {
                                     return;
                                 }
 
-                                if (lastInputRef.current === 'drag') {
+                                // Only real gestures feed the fling sampler. v12
+                                // also fires onMove for programmatic viewport
+                                // updates, which must not count as user panning.
+                                if (isDraggingViewRef.current && lastInputRef.current === 'drag' && !minimapPanRef.current) {
                                     gesturePannedRef.current = true;
                                     moveSamplesRef.current.push({ t: now, x: latest.x, y: latest.y });
                                     const cutoff = now - 120;
