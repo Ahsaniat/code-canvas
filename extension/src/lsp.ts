@@ -10,9 +10,11 @@ export async function getReferences(uri: vscode.Uri, position: vscode.Position) 
     }));
 }
 
-export async function getDefinition(uri: vscode.Uri, position: vscode.Position) {
-    const defs = await vscode.commands.executeCommand<any>('vscode.executeDefinitionProvider', uri, position);
-    return defs;
+/** Both shapes the definition provider may return. */
+export type DefinitionResult = vscode.Location | vscode.LocationLink[] | undefined;
+
+export async function getDefinition(uri: vscode.Uri, position: vscode.Position): Promise<DefinitionResult> {
+    return vscode.commands.executeCommand<DefinitionResult>('vscode.executeDefinitionProvider', uri, position);
 }
 
 export type FlatSymbol = { name: string; kind: vscode.SymbolKind; range: vscode.Range };

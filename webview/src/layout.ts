@@ -28,6 +28,7 @@ import dagre from 'dagre';
 import { Node, Edge } from 'reactflow';
 import { Box, Engine, EngineContext, Pt, normalize } from './layout/types';
 import { radialEngine } from './layout/radial';
+import * as log from './log';
 
 export type LayoutAlgo = 'radial' | 'elk' | 'dagre' | 'force';
 
@@ -173,7 +174,7 @@ async function layoutContainers(nodes: Node[], edges: Edge[], engine: Engine): P
                 degreeOf: (id: string) => degree.get(id) ?? 0,
             });
         } catch (err) {
-            console.warn('[code-canvas] layout engine failed for container', container, err);
+            log.warn('layout engine failed for container', container, err);
             raw = gridFallback(childIds, sizeForLayout);
         }
         raw = enforceNoOverlap(childIds, raw, sizeForLayout);
@@ -314,7 +315,7 @@ function enforceNoOverlap(childIds: string[], raw: Map<string, Pt>, sizeOf: (id:
     }
 
     if (hasOverlap(childIds, pos, sizeOf)) {
-        console.warn('[code-canvas] separation did not converge; using grid placement for this container');
+        log.warn('separation did not converge; using grid placement for this container');
         return gridFallback(childIds, sizeOf);
     }
     return normalize(pos);
@@ -455,7 +456,7 @@ export async function getLayoutedElements(nodes: Node[], edges: Edge[], algo: La
     } catch (err) {
         // A restrictive host can block the ELK worker entirely; dagre keeps the
         // same nesting guarantees without leaving the main thread.
-        console.warn('[code-canvas] ELK unavailable, falling back to dagre:', err);
+        log.warn('ELK unavailable, falling back to dagre:', err);
         return layoutContainers(nodes, edges, dagreEngine);
     }
 }

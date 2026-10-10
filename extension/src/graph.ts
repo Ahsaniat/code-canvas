@@ -106,13 +106,6 @@ export async function buildIndex(root: string): Promise<Index> {
     return { nodes: new Set(files), imports, importLines, importBindings, lang, exports, doc };
 }
 
-/** Number of indexed files that import `file`. */
-function countImporters(index: Index, file: string): number {
-    let n = 0;
-    for (const outs of index.imports.values()) if (outs.has(file)) n++;
-    return n;
-}
-
 // Build a subgraph with BFS from seeds up to max nodes/edges.
 export async function subgraph(index: Index, seeds: string[], maxNodes: number): Promise<Graph> {
     const seen = new Set<string>();
@@ -390,7 +383,7 @@ export function describeGraph(index: Index, graph: Graph): AutoDescriptions {
                     doc: index.doc.get(p),
                     exportedSymbols: index.exports.get(p) ?? [],
                     imports: importsByFile.get(p) ?? [],
-                    importedByCount: importerCount.get(p) ?? countImporters(index, p),
+                    importedByCount: importerCount.get(p) ?? 0,
                 }),
             };
         }

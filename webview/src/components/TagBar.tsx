@@ -51,6 +51,8 @@ export function TagBar({ filePath }: Props) {
           {tag}
           <button
             className="tag-chip-remove"
+            aria-label={`Remove tag ${tag}`}
+            title={`Remove tag ${tag}`}
             onClick={(e) => { e.stopPropagation(); removeTag(filePath, tag); }}
           >
             ×

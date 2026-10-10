@@ -69,6 +69,7 @@ function ExpandButton({ id, expanded, onToggle }: { id: string; expanded: boolea
         <button
             className="folder-chevron nodrag nopan"
             title={expanded ? 'Collapse folder' : 'Expand folder'}
+            aria-label={expanded ? 'Collapse folder' : 'Expand folder'}
             aria-expanded={expanded}
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onToggle(id); }}
@@ -112,6 +113,7 @@ function FileCanvasNode(p: NodeProps) {
                 <button
                     className="code-card-collapse-btn nodrag nopan"
                     title={collapsed ? 'Expand node' : 'Collapse node'}
+                    aria-label={collapsed ? 'Expand node' : 'Collapse node'}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={(e) => { e.stopPropagation(); setCollapsed(path, !collapsed); }}
                 >
