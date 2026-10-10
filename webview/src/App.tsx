@@ -195,6 +195,10 @@ export default function App() {
     const rfInstanceRef = useRef<any | null>(null);
     const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
     const [zoomOk, setZoomOk] = useState<boolean>(true);
+    // The stable React Flow handlers read this through a ref; a captured state
+    // value would go stale the moment they stopped being re-created per render.
+    const zoomOkRef = useRef<boolean>(zoomOk);
+    useEffect(() => { zoomOkRef.current = zoomOk; }, [zoomOk]);
     const codeCacheRef = useRef<Record<string, string>>({});
     const truncatedCacheRef = useRef<Record<string, boolean>>({});
     const overlayRef = useRef<HoverOverlayHandle | null>(null);
@@ -918,6 +922,201 @@ export default function App() {
         ));
     }, []);
 
+    // -----------------------------------------------------------------------
+    // React Flow handlers
+    //
+    // v12 keeps callback props in effect dependencies (SelectionListener caused
+    // an ~1700 renders/s loop once), so every callback handed to <ReactFlow> is
+    // a stable useCallback. Their bodies only touch refs and state setters,
+    // which is what makes the empty dependency lists correct.
+    // -----------------------------------------------------------------------
+
+    const rfOnInit = useCallback((inst: any) => {
+        rfInstanceRef.current = inst;
+        try {
+            const vp = inst?.getViewport?.();
+            if (vp) {
+                setZoomOk(vp.zoom >= VISIBLE_ZOOM_THRESHOLD);
+                viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
+                prevVpRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
+                try { document.documentElement.style.setProperty('--rf-zoom', String(vp.zoom)); } catch { }
+            }
+            const container = document.querySelector('.react-flow') as HTMLElement | null;
+            const onWheel = () => {
+                try {
+                    const now = performance.now();
+                    lastInputRef.current = 'wheel';
+                    lastZoomTimeRef.current = now;
+                    zoomActiveRef.current = true;
+                    gestureZoomedRef.current = true;
+                    wheelCooldownUntilRef.current = now + WHEEL_COOLDOWN_MS;
+
+                    const vpEl = document.querySelector('.react-flow__viewport');
+                    if (!vpEl) return;
+                    vpEl.classList.add('zoom-smooth');
+                    moveSamplesRef.current = [];
+                    if (zoomSmoothTimerRef.current) window.clearTimeout(zoomSmoothTimerRef.current);
+                    zoomSmoothTimerRef.current = window.setTimeout(() => {
+                        vpEl.classList.remove('zoom-smooth');
+                    }, 420);
+                } catch { }
+            };
+            container?.addEventListener('wheel', onWheel, { passive: true } as any);
+            wheelCleanupRef.current = () => container?.removeEventListener('wheel', onWheel as any);
+        } catch { }
+    }, []);
+
+    const rfOnNodeClick = useCallback(() => setFocusIds(null), []);
+
+    const rfOnNodeDoubleClick = useCallback((_event: unknown, node: any) => {
+        if (node.type === 'folder' || node.type === 'group') toggleFolder(node.id);
+    }, [toggleFolder]);
+
+    const rfOnNodeDragStart = useCallback((_event: unknown, node: any) => {
+        try {
+            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.add('no-animate');
+            document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth');
+            isDraggingViewRef.current = true;
+            lastInputRef.current = 'drag';
+            cancelFling();
+            moveSamplesRef.current = [];
+        } catch { }
+        releaseBakedRoutes();
+    }, []);
+
+    const rfOnNodeDragStop = useCallback((_event: unknown, node: any) => {
+        try {
+            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.remove('no-animate');
+            isDraggingViewRef.current = false;
+        } catch { }
+        // Routing happens exactly once per drag, on release - never per frame.
+        rerouteFromCurrentPositions();
+    }, []);
+
+    const rfOnSelectionDragStart = useCallback(() => releaseBakedRoutes(), []);
+    const rfOnSelectionDragStop = useCallback(() => rerouteFromCurrentPositions(), []);
+
+    const rfOnMoveStart = useCallback((event: any) => {
+        cancelFling();
+        moveSamplesRef.current = [];
+        gestureZoomedRef.current = false;
+        gesturePannedRef.current = false;
+        zoomActiveRef.current = false;
+        // A gesture that starts on the minimap is a navigation shortcut, not a
+        // canvas drag: mark it so the fling detector ignores it entirely.
+        const target = (event?.target ?? null) as Element | null;
+        minimapPanRef.current = !!(target && typeof target.closest === 'function' && target.closest('.react-flow__minimap'));
+        lastInputRef.current = minimapPanRef.current ? null : 'drag';
+        isDraggingViewRef.current = true;
+        try { document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth'); } catch { }
+    }, []);
+
+    const rfOnMove = useCallback((_event: unknown, vp: any) => {
+        try {
+            if (!vp) return;
+            if (isFlingingRef.current) { viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom }; return; }
+
+            pendingVpRef.current = vp;
+            if (moveFrameRef.current != null) return;
+            moveFrameRef.current = window.requestAnimationFrame(() => {
+                moveFrameRef.current = null;
+                const latest = pendingVpRef.current; pendingVpRef.current = null;
+                if (!latest) return;
+
+                const now = performance.now();
+                const nextZoomOk = latest.zoom >= VISIBLE_ZOOM_THRESHOLD;
+                if (nextZoomOk !== zoomOkRef.current) setZoomOk(nextZoomOk);
+                try { document.documentElement.style.setProperty('--rf-zoom', String(latest.zoom)); } catch { }
+
+                const prev = prevVpRef.current ?? viewportRef.current;
+                const dz = latest.zoom - prev.zoom;
+
+                viewportRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
+                prevVpRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
+
+                if (Math.abs(dz) > ZOOM_EPS) {
+                    gestureZoomedRef.current = true;
+                    zoomActiveRef.current = true;
+                    lastInputRef.current = 'wheel';
+                    lastZoomTimeRef.current = now;
+                    moveSamplesRef.current = [];
+                    return;
+                }
+
+                // Only real gestures feed the fling sampler. v12 also fires
+                // onMove for programmatic viewport updates, which must not count
+                // as user panning.
+                if (isDraggingViewRef.current && lastInputRef.current === 'drag' && !minimapPanRef.current) {
+                    gesturePannedRef.current = true;
+                    moveSamplesRef.current.push({ t: now, x: latest.x, y: latest.y });
+                    const cutoff = now - 120;
+                    if (moveSamplesRef.current.length > 1) {
+                        let i = 0; while (i < moveSamplesRef.current.length && moveSamplesRef.current[i].t < cutoff) i++;
+                        if (i > 0) moveSamplesRef.current.splice(0, i);
+                    }
+                }
+            });
+        } catch { }
+    }, []);
+
+    const rfOnMoveEnd = useCallback(() => {
+        try {
+            isDraggingViewRef.current = false;
+            const now = performance.now();
+            const inWheelCooldown = now < wheelCooldownUntilRef.current || (now - lastZoomTimeRef.current) < WHEEL_COOLDOWN_MS;
+            if (gestureZoomedRef.current || inWheelCooldown) {
+                cancelFling();
+                gestureZoomedRef.current = false;
+                gesturePannedRef.current = false;
+                zoomActiveRef.current = false;
+                moveSamplesRef.current = [];
+                return;
+            }
+            if (lastInputRef.current !== 'drag' || !gesturePannedRef.current) {
+                cancelFling();
+                gestureZoomedRef.current = false;
+                gesturePannedRef.current = false;
+                moveSamplesRef.current = [];
+                return;
+            }
+            const samples = moveSamplesRef.current;
+            if (!samples || samples.length < 2) {
+                cancelFling();
+                gestureZoomedRef.current = false;
+                gesturePannedRef.current = false;
+                return;
+            }
+            const first = samples[0];
+            const lastS = samples[samples.length - 1];
+            const dtMs = Math.max(1, lastS.t - first.t);
+            const minDurationMs = 90;
+            const minDistancePx = 40;
+            if (dtMs < minDurationMs || (Math.hypot(lastS.x - first.x, lastS.y - first.y) < minDistancePx)) {
+                cancelFling(); gestureZoomedRef.current = false; gesturePannedRef.current = false; return;
+            }
+            const vx = (lastS.x - first.x) / dtMs * 1000;
+            const vy = (lastS.y - first.y) / dtMs * 1000;
+            if (Math.hypot(vx, vy) >= 700) startFling(vx, vy); else cancelFling();
+            gestureZoomedRef.current = false;
+            gesturePannedRef.current = false;
+        } catch { }
+    }, []);
+
+    const rfOnEdgeMouseEnter = useCallback((e: any, edge: any) => showEdgeTooltip(e, edge), []);
+    const rfOnEdgeMouseMove = useCallback((e: any, edge: any) => showEdgeTooltip(e, edge), []);
+    const rfOnEdgeMouseLeave = useCallback(() => hideEdgeTooltip(), []);
+
+    const rfOnEdgeClick = useCallback((_event: unknown, edge: any) => {
+        const sl = edge?.data?.sourceLine ?? 0;
+        const tl = edge?.data?.targetLine ?? 0;
+        try { codeRefs.current[edge.source]?.current?.highlight(sl); codeRefs.current[edge.source]?.current?.scrollTo(sl); } catch { }
+        try { codeRefs.current[edge.target]?.current?.highlight(tl); codeRefs.current[edge.target]?.current?.scrollTo(tl); } catch { }
+    }, []);
+
+    const rfOnNodesChange = useCallback((changes: any) => {
+        setNodes((nds: any) => applyNodeChanges(changes, nds) as any);
+    }, []);
+
     function consumePendingReveal(source: Node[]) {
         const id = pendingRevealRef.current;
         if (!id) return;
@@ -1080,178 +1279,22 @@ export default function App() {
                     selectionOnDrag
                     /* Enter only, deliberately: re-anchoring on every move is what
                        made the banner appear to trail the pointer around a folder. */
-                    onEdgeMouseEnter={(e, edge) => showEdgeTooltip(e as any, edge)}
-                    onEdgeMouseMove={(e, edge) => showEdgeTooltip(e as any, edge)}
-                    onEdgeMouseLeave={hideEdgeTooltip}
+                    onEdgeMouseEnter={rfOnEdgeMouseEnter}
+                    onEdgeMouseMove={rfOnEdgeMouseMove}
+                    onEdgeMouseLeave={rfOnEdgeMouseLeave}
                     onlyRenderVisibleElements
-                    onInit={(inst) => {
-                        rfInstanceRef.current = inst;
-                        try {
-                            const vp = inst?.getViewport?.();
-                            if (vp) {
-                                setZoomOk(vp.zoom >= VISIBLE_ZOOM_THRESHOLD);
-                                viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
-                                prevVpRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom };
-                                try { document.documentElement.style.setProperty('--rf-zoom', String(vp.zoom)); } catch { }
-                            }
-                            const container = document.querySelector('.react-flow') as HTMLElement | null;
-                            const onWheel = () => {
-                                try {
-                                    const now = performance.now();
-                                    lastInputRef.current = 'wheel';
-                                    lastZoomTimeRef.current = now;
-                                    zoomActiveRef.current = true;
-                                    gestureZoomedRef.current = true;
-                                    wheelCooldownUntilRef.current = now + WHEEL_COOLDOWN_MS;
-
-                                    const vpEl = document.querySelector('.react-flow__viewport');
-                                    if (!vpEl) return;
-                                    vpEl.classList.add('zoom-smooth');
-                                    moveSamplesRef.current = [];
-                                    if (zoomSmoothTimerRef.current) window.clearTimeout(zoomSmoothTimerRef.current);
-                                    zoomSmoothTimerRef.current = window.setTimeout(() => {
-                                        vpEl.classList.remove('zoom-smooth');
-                                    }, 420);
-                                } catch { }
-                            };
-                            container?.addEventListener('wheel', onWheel, { passive: true } as any);
-                            wheelCleanupRef.current = () => container?.removeEventListener('wheel', onWheel as any);
-                        } catch { }
-                    }}
-                    onNodeClick={() => setFocusIds(null)}
-                    onNodeDoubleClick={(_e, node: any) => { if (node.type === 'folder' || node.type === 'group') toggleFolder(node.id); }}
-                    onNodeDragStart={(_evt, node) => {
-                        try {
-                            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.add('no-animate');
-                            document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth');
-                            isDraggingViewRef.current = true;
-                            lastInputRef.current = 'drag';
-                            cancelFling();
-                            moveSamplesRef.current = [];
-                        } catch { }
-                        releaseBakedRoutes();
-                    }}
-                    onSelectionDragStart={() => releaseBakedRoutes()}
-                    onSelectionDragStop={() => rerouteFromCurrentPositions()}
-                    onNodeDragStop={(_evt, node) => {
-                        try {
-                            document.querySelector(`.react-flow__node[data-id="${node.id}"]`)?.classList.remove('no-animate');
-                            isDraggingViewRef.current = false;
-                        } catch { }
-                        // Routing happens exactly once per drag, on release — never per frame.
-                        rerouteFromCurrentPositions();
-                    }}
-                    onMoveStart={(event) => {
-                        cancelFling();
-                        moveSamplesRef.current = [];
-                        gestureZoomedRef.current = false;
-                        gesturePannedRef.current = false;
-                        zoomActiveRef.current = false;
-                        // A gesture that starts on the minimap is a navigation
-                        // shortcut, not a canvas drag: mark it so the fling
-                        // detector ignores it entirely.
-                        const target = (event?.target ?? null) as Element | null;
-                        minimapPanRef.current = !!(target && typeof target.closest === 'function' && target.closest('.react-flow__minimap'));
-                        lastInputRef.current = minimapPanRef.current ? null : 'drag';
-                        isDraggingViewRef.current = true;
-                        try { document.querySelector('.react-flow__viewport')?.classList.remove('zoom-smooth'); } catch { }
-                    }}
-                    onMove={(_evt, vp) => {
-                        try {
-                            if (!vp) return;
-                            if (isFlingingRef.current) { viewportRef.current = { x: vp.x, y: vp.y, zoom: vp.zoom }; return; }
-
-                            pendingVpRef.current = vp;
-                            if (moveFrameRef.current != null) return;
-                            moveFrameRef.current = window.requestAnimationFrame(() => {
-                                moveFrameRef.current = null;
-                                const latest = pendingVpRef.current; pendingVpRef.current = null;
-                                if (!latest) return;
-
-                                const now = performance.now();
-                                const nextZoomOk = latest.zoom >= VISIBLE_ZOOM_THRESHOLD;
-                                if (nextZoomOk !== zoomOk) setZoomOk(nextZoomOk);
-                                try { document.documentElement.style.setProperty('--rf-zoom', String(latest.zoom)); } catch { }
-
-                                const prev = prevVpRef.current ?? viewportRef.current;
-                                const dz = latest.zoom - prev.zoom;
-
-                                viewportRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
-                                prevVpRef.current = { x: latest.x, y: latest.y, zoom: latest.zoom };
-
-                                if (Math.abs(dz) > ZOOM_EPS) {
-                                    gestureZoomedRef.current = true;
-                                    zoomActiveRef.current = true;
-                                    lastInputRef.current = 'wheel';
-                                    lastZoomTimeRef.current = now;
-                                    moveSamplesRef.current = [];
-                                    return;
-                                }
-
-                                // Only real gestures feed the fling sampler. v12
-                                // also fires onMove for programmatic viewport
-                                // updates, which must not count as user panning.
-                                if (isDraggingViewRef.current && lastInputRef.current === 'drag' && !minimapPanRef.current) {
-                                    gesturePannedRef.current = true;
-                                    moveSamplesRef.current.push({ t: now, x: latest.x, y: latest.y });
-                                    const cutoff = now - 120;
-                                    if (moveSamplesRef.current.length > 1) {
-                                        let i = 0; while (i < moveSamplesRef.current.length && moveSamplesRef.current[i].t < cutoff) i++;
-                                        if (i > 0) moveSamplesRef.current.splice(0, i);
-                                    }
-                                }
-                            });
-                        } catch { }
-                    }}
-                    onMoveEnd={() => {
-                        try {
-                            isDraggingViewRef.current = false;
-                            const now = performance.now();
-                            const inWheelCooldown = now < wheelCooldownUntilRef.current || (now - lastZoomTimeRef.current) < WHEEL_COOLDOWN_MS;
-                            if (gestureZoomedRef.current || inWheelCooldown) {
-                                cancelFling();
-                                gestureZoomedRef.current = false;
-                                gesturePannedRef.current = false;
-                                zoomActiveRef.current = false;
-                                moveSamplesRef.current = [];
-                                return;
-                            }
-                            if (lastInputRef.current !== 'drag' || !gesturePannedRef.current) {
-                                cancelFling();
-                                gestureZoomedRef.current = false;
-                                gesturePannedRef.current = false;
-                                moveSamplesRef.current = [];
-                                return;
-                            }
-                            const samples = moveSamplesRef.current;
-                            if (!samples || samples.length < 2) {
-                                cancelFling();
-                                gestureZoomedRef.current = false;
-                                gesturePannedRef.current = false;
-                                return;
-                            }
-                            const first = samples[0];
-                            const lastS = samples[samples.length - 1];
-                            const dtMs = Math.max(1, lastS.t - first.t);
-                            const minDurationMs = 90;
-                            const minDistancePx = 40;
-                            if (dtMs < minDurationMs || (Math.hypot(lastS.x - first.x, lastS.y - first.y) < minDistancePx)) {
-                                cancelFling(); gestureZoomedRef.current = false; gesturePannedRef.current = false; return;
-                            }
-                            const vx = (lastS.x - first.x) / dtMs * 1000;
-                            const vy = (lastS.y - first.y) / dtMs * 1000;
-                            if (Math.hypot(vx, vy) >= 700) startFling(vx, vy); else cancelFling();
-                            gestureZoomedRef.current = false;
-                            gesturePannedRef.current = false;
-                        } catch { }
-                    }}
-                    onEdgeClick={(_e, edge: any) => {
-                        const sl = edge?.data?.sourceLine ?? 0;
-                        const tl = edge?.data?.targetLine ?? 0;
-                        try { codeRefs.current[edge.source]?.current?.highlight(sl); codeRefs.current[edge.source]?.current?.scrollTo(sl); } catch { }
-                        try { codeRefs.current[edge.target]?.current?.highlight(tl); codeRefs.current[edge.target]?.current?.scrollTo(tl); } catch { }
-                    }}
-                    onNodesChange={(changes) => setNodes((nds: any) => applyNodeChanges(changes as any, nds as any) as any)}
+                    onInit={rfOnInit}
+                    onNodeClick={rfOnNodeClick}
+                    onNodeDoubleClick={rfOnNodeDoubleClick}
+                    onNodeDragStart={rfOnNodeDragStart}
+                    onSelectionDragStart={rfOnSelectionDragStart}
+                    onSelectionDragStop={rfOnSelectionDragStop}
+                    onNodeDragStop={rfOnNodeDragStop}
+                    onMoveStart={rfOnMoveStart}
+                    onMove={rfOnMove}
+                    onMoveEnd={rfOnMoveEnd}
+                    onEdgeClick={rfOnEdgeClick}
+                    onNodesChange={rfOnNodesChange}
                     onSelectionChange={handleSelectionChange}
                     minZoom={0.02}
                     maxZoom={8}
