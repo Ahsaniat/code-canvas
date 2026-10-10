@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { Handle, Position, NodeProps, NodeResizer, useUpdateNodeInternals } from '@xyflow/react';
 import type { Node } from '@xyflow/react';
 import CodeCard, { CodeCardHandle } from './code/CodeCard';
@@ -52,6 +52,12 @@ export interface CanvasContextValue {
     onToggleFolder: (id: string) => void;
     /** Persist a user-resized file node size and re-lay out. */
     onResizeFile: (path: string, width: number, height: number) => void;
+    /**
+     * A collapsed card is auto-height; the node reports the measured height so
+     * the node box (selection, handles, edges, layout) matches what is drawn.
+     * `null` restores the stored size.
+     */
+    onCollapsedHeight: (path: string, height: number | null) => void;
 }
 
 export const CanvasContext = createContext<CanvasContextValue | null>(null);
@@ -114,18 +120,39 @@ function FileCanvasNode(p: NodeProps<FileNodeType>) {
         updateNodeInternals(p.id);
     }, [collapsed, descriptionExpanded, p.id, updateNodeInternals]);
 
+    const cardRef = useRef<HTMLDivElement | null>(null);
+
+    // While collapsed the card is auto-height. Report the measured height so
+    // the node box (selection frame, handles, edges, layout spacing) follows
+    // the card, and restore the stored height when it expands again.
+    useEffect(() => {
+        if (!collapsed) {
+            ctx.onCollapsedHeight(path, null);
+            return;
+        }
+        const el = cardRef.current;
+        if (!el) return;
+        const report = () => ctx.onCollapsedHeight(path, el.offsetHeight);
+        report();
+        const observer = new ResizeObserver(report);
+        observer.observe(el);
+        return () => observer.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collapsed, path]);
+
     return (
         <>
             {/* Sibling of the card: `.file-node` has overflow hidden, which
-                would clip the resize handles at the node edges. */}
+                would clip the resize handles at the node edges. Hidden while
+                collapsed, where height is measured rather than user-set. */}
             <NodeResizer
                 minWidth={260}
                 minHeight={140}
-                isVisible={p.selected}
+                isVisible={p.selected && !collapsed}
                 color="rgba(255, 255, 255, 0.45)"
                 onResizeEnd={(_event, params) => ctx.onResizeFile(path, params.width, params.height)}
             />
-            <div className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: data.dim ? 0.25 : 1 }}>
+            <div ref={cardRef} className={`file-node ${collapsed ? 'code-card--collapsed' : ''}`} style={{ opacity: data.dim ? 0.25 : 1 }}>
             <div className="file-node-header label-fixed code-card-header" onDoubleClick={() => ctx.onOpenFile(path)}>
                 <span className="code-card-filename">{data.label}</span>
                 <button
