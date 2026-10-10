@@ -10,6 +10,9 @@ export interface FileMeta {
   tags?: string[];
   collapsed?: boolean;
   descriptionExpanded?: boolean;
+  /** User-set node size (NodeResizer). Overrides the content-derived size. */
+  width?: number;
+  height?: number;
 }
 
 export interface MetaFile {
