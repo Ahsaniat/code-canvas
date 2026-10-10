@@ -1,6 +1,6 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import ReactFlow, { Background, Controls, MarkerType, MiniMap, applyNodeChanges } from 'reactflow';
-import 'reactflow/dist/style.css';
+import { ReactFlow, Background, Controls, MarkerType, MiniMap, applyNodeChanges } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { nodeTypes, CanvasContext, CanvasContextValue, FolderNodeData } from './nodeTypes';
 import { edgeTypes } from './edges/CircuitEdge';
 import { getLayoutedElements, LayoutAlgo, normalizeAlgo } from './layout';

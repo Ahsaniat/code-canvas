@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect } from 'react';
-import { Handle, Position, NodeProps, useUpdateNodeInternals } from 'reactflow';
+import { Handle, Position, NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import type { Node } from '@xyflow/react';
 import CodeCard, { CodeCardHandle } from './code/CodeCard';
 import { DescriptionPanel } from './components/DescriptionPanel';
 import { TagBar } from './components/TagBar';
@@ -15,7 +16,9 @@ import { firstSentence } from './text';
 // context instead of a closure captured inside `nodeTypes`.
 // ---------------------------------------------------------------------------
 
-export interface FolderNodeData {
+// Type aliases (not interfaces): React Flow v12 constrains node data to
+// Record<string, unknown>, which interfaces do not satisfy implicitly.
+export type FolderNodeData = {
     label: string;
     path?: string;
     fileCount: number;
@@ -24,7 +27,19 @@ export interface FolderNodeData {
     expandable: boolean;
     expanded: boolean;
     dim?: boolean;
-}
+};
+
+export type FileNodeData = {
+    label: string;
+    path: string;
+    lang: 'ts' | 'js' | 'py' | 'other';
+    dim?: boolean;
+    width?: number;
+};
+
+export type FolderNodeType = Node<FolderNodeData, 'folder'>;
+export type GroupNodeType = Node<FolderNodeData, 'group'>;
+export type FileNodeType = Node<FileNodeData, 'file'>;
 
 export interface CanvasContextValue {
     zoomOk: boolean;
@@ -83,9 +98,9 @@ function ExpandButton({ id, expanded, onToggle }: { id: string; expanded: boolea
 // File node
 // ---------------------------------------------------------------------------
 
-function FileCanvasNode(p: NodeProps) {
+function FileCanvasNode(p: NodeProps<FileNodeType>) {
     const ctx = useCanvas();
-    const data = p.data as { label: string; path: string; lang: any; dim?: boolean; width?: number };
+    const data = p.data;
     const path = data.path;
     const content = ctx.codeCacheRef.current[path] ?? path;
     const truncated = ctx.truncatedCacheRef.current[path] === true;
@@ -153,7 +168,7 @@ function FileCanvasNode(p: NodeProps) {
 // This is what keeps the default view free of nested containers.
 // ---------------------------------------------------------------------------
 
-function FolderCanvasNode(p: NodeProps<FolderNodeData>) {
+function FolderCanvasNode(p: NodeProps<FolderNodeType>) {
     const ctx = useCanvas();
     const data = p.data;
     const description = useEffectiveDescription(data.path);
@@ -192,7 +207,7 @@ function FolderCanvasNode(p: NodeProps<FolderNodeData>) {
 // pass (see layout.ts) and is never revised afterwards.
 // ---------------------------------------------------------------------------
 
-function GroupCanvasNode(p: NodeProps<FolderNodeData>) {
+function GroupCanvasNode(p: NodeProps<GroupNodeType>) {
     const ctx = useCanvas();
     const data = p.data;
 
