@@ -24,6 +24,8 @@ interface MetaStore {
   setDescription: (filePath: string, description: string) => void;
   setDescriptionExpanded: (filePath: string, expanded: boolean) => void;
   setCollapsed: (filePath: string, collapsed: boolean) => void;
+  /** Persist a user-resized node size (NodeResizer). */
+  setNodeSize: (filePath: string, width: number, height: number) => void;
   addTag: (filePath: string, tag: string) => void;
   removeTag: (filePath: string, tag: string) => void;
 
@@ -74,6 +76,9 @@ export const useMetaStore = create<MetaStore>((set, get) => ({
 
   setCollapsed: (filePath, collapsed) =>
     get().patchFileMeta(filePath, { collapsed }),
+
+  setNodeSize: (filePath, width, height) =>
+    get().patchFileMeta(filePath, { width, height }),
 
   addTag: (filePath, tag) => {
     const current = get().files[filePath]?.tags ?? [];

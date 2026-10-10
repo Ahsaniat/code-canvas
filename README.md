@@ -13,13 +13,26 @@ The canvas is **collapse-first**: folders open as compact chips carrying the agg
 - **Symbols on hover** - a wire tells you which functions, classes and types cross that boundary
 - **Automatic descriptions** - every file and folder is described from its doc comment, exports and imports; your own text always wins
 - **Inline code previews** - syntax-highlighted, scrollable, click a token to jump to its definition
+- **Resizable nodes** - select a file node and drag its corners to give it more room; the size is remembered
 - **Git-aware** - open changed files, live refresh on save
+
+## Screenshots
+
+![Canvas overview](__doc__/demo_photos/Screenshot_20261010_142932.png)
+
+| Selection & resize handles | Inline code preview |
+| --- | --- |
+| ![Selection and resize handles](__doc__/demo_photos/Screenshot_20261010_143001.png) | ![Inline code preview](__doc__/demo_photos/Screenshot_20261010_143056.png) |
+
+| File descriptions | Expanded description & resized node |
+| --- | --- |
+| ![File descriptions](__doc__/demo_photos/Screenshot_20261010_143116.png) | ![Resized node](__doc__/demo_photos/Screenshot_20261010_143304.png) |
 
 ## Status & Disclaimer (by original author wallxack)
 This project is provided as-is with many known and unknown bugs. I open-sourced it so the community can build on it and take it further. I don’t have time to actively maintain it. Use at your own risk; contributions are very welcome.
 
 ## Status & Disclaimer (by me, Ahsan)
-I have forked it from wallxack and fixed all known bugs. There maybe unknown bugs. I need to conduct regression test which I haven't done yet. But I have been using the extension for a month, so far so good. The codebase was suffering from massive optimization issue with graphics, specially graph rendering and staturing while loading graphs making the not only extension but also the VSCode almost unusable. I have identified all the optimization issues and tried to fix them. The extension is now stable. I have transitioned this codebase to React Flow 12 (`@xyflow/react`); adopting `NodeResizer` is next. 
+I have forked it from wallxack and fixed all known bugs. There maybe unknown bugs. I need to conduct regression test which I haven't done yet. But I have been using the extension for a month, so far so good. The codebase was suffering from massive optimization issue with graphics, specially graph rendering and staturing while loading graphs making the not only extension but also the VSCode almost unusable. I have identified all the optimization issues and tried to fix them. The extension is now stable. I have transitioned this codebase to React Flow 12 (`@xyflow/react`) and adopted `NodeResizer` for file nodes. 
 
 
 ## Requirements
@@ -227,7 +240,6 @@ Tip: For a webview build watch, run `npx vite build --watch` inside `webview/`.
 ## Roadmap / Ideas
 - Additional language parsers (Go, Rust, Java, C#)
 - Resolve TypeScript `paths` and bundler aliases
-- Adopt React Flow's `NodeResizer` (the v12 migration is done)
 - Model-generated descriptions as an opt-in alternative to the heuristics
 - Named, saveable canvases and screenshot export
 

@@ -14,9 +14,12 @@ extension/code-canvas-*.vsix
 # Workspace metadata (keys are machine-specific absolute paths)
 .code-canvas/
 
-# Local audit docs
-docs/audit-oct09.md
-__doc__/demo_photos/
+# Local docs kept untracked
+__doc__/audit-oct09.md
+
+# Stale screenshots (pre-fix bugs); the ones used by the README are tracked.
+__doc__/demo_photos/Screenshot_20261006_114450.png
+__doc__/demo_photos/Screenshot_20261010_143251.png
 
 # Environment
 .env
