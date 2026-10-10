@@ -390,7 +390,7 @@ export default function App() {
             extent: n.parentId ? 'parent' : undefined,
             dragHandle: n.kind === 'file' ? '.file-node-header, .node-placeholder-body' : undefined,
             data: n.kind === 'file'
-                ? { label: n.label, path: n.path, lang: n.lang, width: size.width }
+                ? { label: n.label, path: n.path, lang: n.lang }
                 : folderData,
             style: size,
             zIndex: n.kind === 'group' ? 0 : 1,
