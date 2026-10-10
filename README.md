@@ -1,9 +1,11 @@
-# Code Canvas - Visual Code Graph for VS Code
+<h1 align="center">Code Canvas - Visual Code Graph for VS Code</h1>
 
-[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-install-0b0e12)](https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss)
-[![Open VSX](https://img.shields.io/open-vsx/v/ahsaniat/code-canvas-oss?label=open%20vsx&color=0b0e12)](https://open-vsx.org/extension/ahsaniat/code-canvas-oss)
-[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/ahsaniat/code-canvas-oss?label=downloads&color=0b0e12)](https://open-vsx.org/extension/ahsaniat/code-canvas-oss)
-[![GitHub release](https://img.shields.io/github/v/release/Ahsaniat/code-canvas?label=release&color=0b0e12)](https://github.com/Ahsaniat/code-canvas/releases)
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=ahsaniat.code-canvas-oss"><img src="https://img.shields.io/badge/VS%20Marketplace-install-blue" alt="VS Marketplace"></a>
+  <a href="https://open-vsx.org/extension/ahsaniat/code-canvas-oss"><img src="https://img.shields.io/open-vsx/v/ahsaniat/code-canvas-oss?label=open%20vsx" alt="Open VSX"></a>
+  <a href="https://open-vsx.org/extension/ahsaniat/code-canvas-oss"><img src="https://img.shields.io/open-vsx/dt/ahsaniat/code-canvas-oss?label=downloads" alt="Open VSX downloads"></a>
+  <a href="https://github.com/Ahsaniat/code-canvas/releases"><img src="https://img.shields.io/github/v/release/Ahsaniat/code-canvas?label=release" alt="GitHub release"></a>
+</p>
 
 ## Install
 
