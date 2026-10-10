@@ -16,6 +16,7 @@ extension/*.vsix
 
 # Local docs kept untracked
 __doc__/audit-oct09.md
+__doc__/11-todo.md
 
 # Stale screenshots (pre-fix bugs); the ones used by the README are tracked.
 __doc__/demo_photos/Screenshot_20261006_114450.png

@@ -1,7 +1,7 @@
 {
   "name": "code-canvas",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Code Canvas",
   "scripts": {
     "build": "npm -w webview run build && npm -w extension run build",
