@@ -9,8 +9,6 @@
         "strict": true,
         "allowSyntheticDefaultImports": true,
         "skipLibCheck": true,
-        "outDir": "dist",
-        "rootDir": "src",
         "types": [
             "vscode",
             "node"

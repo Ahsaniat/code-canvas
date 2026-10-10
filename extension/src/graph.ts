@@ -263,7 +263,6 @@ export async function subgraph(index: Index, seeds: string[], maxNodes: number):
                 id: `e_${hashString(s + '->' + t + '#' + (sourceLine ?? -1))}`,
                 source: sid,
                 target: tid,
-                kind: 'import',
                 sourceLine,
                 targetLine: links[0]?.targetLine ?? 0,
                 links,
