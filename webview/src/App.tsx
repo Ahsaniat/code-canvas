@@ -902,6 +902,22 @@ export default function App() {
         focusNodesForId(id);
     }
 
+    /**
+     * React Flow v12's SelectionListener re-fires `onSelectionChange` whenever
+     * this callback's identity changes. An inline arrow used to be passed here,
+     * so every render produced a new callback which was immediately invoked
+     * with the same selection; `setSelectedIds(newIds)` then re-rendered the
+     * app - an endless loop (~1700 renders/s) that starved deferred renders,
+     * which is why search never showed a result. Keep this callback stable and
+     * bail out when the selection is unchanged.
+     */
+    const handleSelectionChange = useCallback((params: { nodes?: { id: string }[] } | null) => {
+        const ids = (params?.nodes || []).map((n) => n.id);
+        setSelectedIds(prev => (
+            prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids
+        ));
+    }, []);
+
     function consumePendingReveal(source: Node[]) {
         const id = pendingRevealRef.current;
         if (!id) return;
@@ -1236,10 +1252,7 @@ export default function App() {
                         try { codeRefs.current[edge.target]?.current?.highlight(tl); codeRefs.current[edge.target]?.current?.scrollTo(tl); } catch { }
                     }}
                     onNodesChange={(changes) => setNodes((nds: any) => applyNodeChanges(changes as any, nds as any) as any)}
-                    onSelectionChange={(p: any) => {
-                        const ids = (p?.nodes || []).map((n: any) => n.id);
-                        setSelectedIds(ids);
-                    }}
+                    onSelectionChange={handleSelectionChange}
                     minZoom={0.02}
                     maxZoom={8}
                 >
