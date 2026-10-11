@@ -306,14 +306,18 @@ export async function subgraph(index: Index, seeds: string[], maxNodes: number):
             const sid = nodeIdByPath.get(s)!;
             const tid = nodeIdByPath.get(t)!;
             const lines = lineMap.get(t) || [];
-            const sourceLine = lines.length ? lines[0] : undefined;
+            const importLine = lines.length ? lines[0] : undefined;
             const links = await buildEdgeLinks(bindingMap.get(t) || [], () => getSymbols(t));
+            // Direction: PROVIDER -> CONSUMER. `s` imports from `t`, so `t`
+            // provides the symbols and `s` consumes them. The arrow tip lands
+            // on the consumer, and the hover list ("symbols crossing this
+            // boundary") reads as the flow from the file that defines them.
             edges.push({
-                id: `e_${hashString(s + '->' + t + '#' + (sourceLine ?? -1))}`,
-                source: sid,
-                target: tid,
-                sourceLine,
-                targetLine: links[0]?.targetLine ?? 0,
+                id: `e_${hashString(t + '->' + s + '#' + (importLine ?? -1))}`,
+                source: tid,
+                target: sid,
+                sourceLine: links[0]?.sourceLine ?? 0,
+                targetLine: importLine,
                 links,
             });
         }
@@ -358,11 +362,13 @@ async function buildEdgeLinks(
             symbolName: named ? b.name : undefined,
             alias: b.alias,
             kind: b.kind,
-            sourceLine: b.line,
-            targetLine: (named ? byName.get(b.name) : undefined) ?? fallbackLine,
+            // Endpoint-relative: the definition lives in the SOURCE (the file
+            // that provides the symbol), the import statement in the TARGET.
+            sourceLine: (named ? byName.get(b.name) : undefined) ?? fallbackLine,
+            targetLine: b.line,
         });
     }
-    if (!out.length) out.push({ targetLine: fallbackLine, kind: 'module' });
+    if (!out.length) out.push({ sourceLine: fallbackLine, targetLine: 0, kind: 'module' });
     return out;
 }
 

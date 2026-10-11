@@ -33,8 +33,9 @@ export type ImportKind =
 
 /**
  * One imported/exported binding behind an import edge. `symbolName` is the name
- * as exported by the TARGET module; `alias` is the local name in the SOURCE
- * module when the two differ.
+ * as provided by the SOURCE module; `alias` is the local name in the TARGET
+ * module when the two differ. `sourceLine`/`targetLine` are lines in the source
+ * and target files respectively (the definition and the import statement).
  */
 export type EdgeLink = {
     symbolName?: string;
@@ -46,9 +47,13 @@ export type EdgeLink = {
 
 export type GraphEdge = {
     id: string;
+    /** File that PROVIDES the symbols (the imported module). */
     source: string;
+    /** File that CONSUMES them (the importing module). */
     target: string;
+    /** Line in the source file: the symbol definition. */
     sourceLine?: number;
+    /** Line in the target file: the import statement. */
     targetLine?: number;
     links?: EdgeLink[];
 };

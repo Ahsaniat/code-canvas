@@ -216,8 +216,8 @@ function FolderCanvasNode(p: NodeProps<FolderNodeType>) {
             <div className="folder-node-body">
                 <div className="folder-node-badges">
                     <span className="folder-badge" title="Files in this folder (recursive)">{data.fileCount} file{data.fileCount === 1 ? '' : 's'}</span>
-                    <span className="folder-badge folder-badge--in" title="Incoming imports from outside this folder">in {data.inDegree}</span>
-                    <span className="folder-badge folder-badge--out" title="Outgoing imports to outside this folder">out {data.outDegree}</span>
+                    <span className="folder-badge folder-badge--in" title="Imports from files outside this folder">in {data.inDegree}</span>
+                    <span className="folder-badge folder-badge--out" title="Imported by files outside this folder">out {data.outDegree}</span>
                 </div>
                 {description.text ? (
                     <div className={`folder-node-description ${description.auto ? 'is-auto' : ''}`}>
@@ -246,8 +246,8 @@ function GroupCanvasNode(p: NodeProps<GroupNodeType>) {
             <div className="group-label label-fixed">
                 <ExpandButton id={p.id} expanded onToggle={ctx.onToggleFolder} />
                 <span className="group-label-name">{data.label}</span>
-                <span className="folder-badge folder-badge--in">in {data.inDegree}</span>
-                <span className="folder-badge folder-badge--out">out {data.outDegree}</span>
+                <span className="folder-badge folder-badge--in" title="Imports from files outside this folder">in {data.inDegree}</span>
+                <span className="folder-badge folder-badge--out" title="Imported by files outside this folder">out {data.outDegree}</span>
             </div>
             <Handle type="source" position={Position.Right} />
             <Handle type="target" position={Position.Left} />
