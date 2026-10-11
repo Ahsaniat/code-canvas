@@ -2,6 +2,11 @@
 
 All notable changes to the **Code Canvas** extension are documented in this file.
 
+## [0.3.1] - 2026-10-11
+
+### Fixed
+- Edge arrows now point from the file that **provides** symbols to the file that **imports** them (previously the reverse), matching the symbol list shown on hover. Folder badges follow: `in` = imports from outside, `out` = imported-by.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
@@ -9,7 +14,6 @@ All notable changes to the **Code Canvas** extension are documented in this file
 - **TypeScript `paths` / `baseUrl` resolution** from `tsconfig.json` / `jsconfig.json`, so `@/components/...` style imports produce edges
 
 ### Changed
-- Edge arrows now point from the file that **provides** symbols to the file that **imports** them (previously the reverse). This matches the symbol list shown on hover; folder badges follow: `in` = imports from outside, `out` = imported-by.
 - Publishing is automated: a GitHub release tagged `v<version>` builds, publishes to the Marketplace (and Open VSX when configured) and attaches the VSIX
 - Host/webview protocol types now share one source of truth; stylesheet split into ordered modules; React Flow callbacks stabilized
 
