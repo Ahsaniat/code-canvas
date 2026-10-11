@@ -26,6 +26,11 @@ export interface RawNode {
     symbols?: string[];
 }
 
+/**
+ * One binding behind a raw import edge. Lines are endpoint-relative:
+ * `sourceLine` is a line in the SOURCE file (the provider), `targetLine` one in
+ * the TARGET file (the consumer).
+ */
 export interface RawEdgeLink {
     symbolName?: string;
     alias?: string;
