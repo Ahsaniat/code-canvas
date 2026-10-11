@@ -76,8 +76,11 @@ carrying source/target paths, labels and symbol names. That is why hovering an
 aggregated folder→folder wire can still list the individual file relationships
 behind it.
 
-In/out degree badges on folder chips are computed from the projected edge set, so
-they always agree with what is drawn.
+Edges are directed **provider → consumer** (the importing file is the target),
+so the hover list reads as the symbols flowing out of the file that defines
+them. In/out degree badges follow that: `in` counts what the folder imports from
+outside, `out` counts what other folders import from it. They are computed from
+the projected edge set, so they always agree with what is drawn.
 
 ## Why "collapse everything by default" cannot work
 

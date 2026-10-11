@@ -178,19 +178,25 @@ render as containers and which as collapsed chips.
 
 ## 6. Edge construction
 
+Edges are directed **from the file that provides the symbols to the file that
+consumes them**. If `a.ts` imports `parse` from `b.ts`, the edge runs
+`b.ts → a.ts`: the arrow tip lands on the consumer, and the hover list
+("symbols crossing this boundary") reads as the flow out of the file that
+defines them.
+
 For each resolved import pair, one `GraphEdge` is emitted carrying `EdgeLink[]`:
 
 ```ts
 type EdgeLink = {
-  symbolName?: string;   // the exported name, when the import is named
-  alias?: string;        // the local binding name
+  symbolName?: string;   // the provided name, when the import is named
+  alias?: string;        // the local binding name in the consumer
   kind?: ImportKind;     // named | default | namespace | dynamic | require | …
-  sourceLine?: number;   // where the import statement is
-  targetLine: number;    // where the symbol is defined in the target
+  sourceLine?: number;   // where the symbol is defined in the source
+  targetLine: number;    // where the import statement is in the target
 };
 ```
 
-`targetLine` is resolved against the target file's **document symbols** via the
+`sourceLine` is resolved against the source file's **document symbols** via the
 LSP, so clicking an edge can jump to the actual definition rather than line 1.
 Symbol lookups are cached per file.
 

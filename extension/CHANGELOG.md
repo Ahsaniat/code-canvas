@@ -2,18 +2,23 @@
 
 All notable changes to the **Code Canvas** extension are documented in this file.
 
+## [0.3.1] - 2026-10-11
+
+### Fixed
+- Edge arrows now point from the file that **provides** symbols to the file that **imports** them (previously the reverse), matching the symbol list shown on hover. Folder badges follow: `in` = imports from outside, `out` = imported-by.
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
 - **Go, Rust, Java and C# support** - indexing, heuristic descriptions and import resolution for all four languages, with syntax highlighting
 - **TypeScript `paths` / `baseUrl` resolution** from `tsconfig.json` / `jsconfig.json`, so `@/components/...` style imports produce edges
 
-### Fixed
-- Single-key shortcuts no longer fire outside the canvas. They were unscoped VS Code keybindings, so typing `r` (or `O`, `+`, `!@#$`) in the editor was swallowed until the extension was uninstalled. The shortcuts now live in the canvas itself and ignore focused inputs.
-
 ### Changed
 - Publishing is automated: a GitHub release tagged `v<version>` builds, publishes to the Marketplace (and Open VSX when configured) and attaches the VSIX
 - Host/webview protocol types now share one source of truth; stylesheet split into ordered modules; React Flow callbacks stabilized
+
+### Fixed
+- Single-key shortcuts no longer fire outside the canvas. They were unscoped VS Code keybindings, so typing `r` (or `O`, `+`, `!@#$`) in the editor was swallowed until the extension was uninstalled. The shortcuts now live in the canvas itself and ignore focused inputs.
 
 ## [0.2.2] - 2026-10-10
 
